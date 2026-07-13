@@ -538,7 +538,9 @@ export const createRouter = (opts: RouterOptions): Router => {
 
     // 重复导航
     if (isInitialNavigationDone && target.fullPath === fromLoc.fullPath) {
-      return fail(NavigationFailureType.duplicated, target, fromLoc, "重复导航");
+      const failure = fail(NavigationFailureType.duplicated, target, fromLoc, "重复导航");
+      runAfterHooks(target, fromLoc, failure);
+      return failure;
     }
 
     try {
@@ -933,9 +935,11 @@ const stringifyPathParams = (
     if (!part.startsWith(":")) return [part];
     const token = parseParamToken(part);
     const value = params?.[token.name];
-    if (value == null) return token.optional ? [] : [""];
+    if (value == null || (token.optional && value === "")) return token.optional ? [] : [""];
     const values = Array.isArray(value) ? value : [value];
-    return values.map((item) => encodeURIComponent(String(item)));
+    return values
+      .filter((item) => !(token.optional && item === ""))
+      .map((item) => encodeURIComponent(String(item)));
   });
   const path = out.join("/");
   return path === "" ? "/" : path.replace(/\/+/g, "/");

@@ -58,6 +58,15 @@ describe("Vue Router 4 compatible core semantics", () => {
     expect(stringified.fullPath).toBe("/search?tag=one%20two&tag&flag");
   });
 
+  it("omits empty optional params when resolving named routes", () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [{ path: "/users/:id?", name: "user", component: "user" }]
+    });
+
+    expect(router.resolve({ name: "user", params: { id: "" } }).path).toBe("/users");
+  });
+
   it("prefers a static route over a dynamic route regardless of declaration order", () => {
     const router = createRouter({
       mode: "memory",

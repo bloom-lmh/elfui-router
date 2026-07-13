@@ -74,6 +74,24 @@ describe("F3.5 navigation failure", () => {
     expect((r as { type: string }).type).toBe(NavigationFailureType.duplicated);
   });
 
+  it("失败导航也会传递给 afterEach", async () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/x",
+      routes: [{ path: "/x", component: "x" }]
+    });
+    const afterEach = vi.fn();
+    router.afterEach(afterEach);
+
+    await router.push("/x");
+
+    expect(afterEach).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/x" }),
+      expect.objectContaining({ path: "/x" }),
+      expect.objectContaining({ type: NavigationFailureType.duplicated })
+    );
+  });
+
   it("isNavigationFailure 判定", () => {
     expect(isNavigationFailure({ type: "aborted" })).toBe(true);
     expect(isNavigationFailure({ type: "duplicated" })).toBe(true);
