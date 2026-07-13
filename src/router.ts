@@ -139,12 +139,16 @@ export interface RouteLocationNamed<Name extends string = string> {
   query?: NamedRouteQuery<Name>;
   hash?: string;
   replace?: boolean;
+  /** Re-run a navigation even when its fullPath is the current location. */
+  force?: boolean;
 }
 export interface RouteLocationPath {
   path: string;
   query?: Record<string, RouteQueryValueRaw | RouteQueryValueRaw[]>;
   hash?: string;
   replace?: boolean;
+  /** Re-run a navigation even when its fullPath is the current location. */
+  force?: boolean;
 }
 
 export type RouteLocationRaw = string | RouteLocationNamed | RouteLocationPath;
@@ -551,7 +555,8 @@ export const createRouter = (opts: RouterOptions): Router => {
     }
 
     // 重复导航
-    if (isInitialNavigationDone && target.fullPath === fromLoc.fullPath) {
+    const force = typeof to === "object" && to !== null && to.force === true;
+    if (!force && isInitialNavigationDone && target.fullPath === fromLoc.fullPath) {
       const failure = fail(NavigationFailureType.duplicated, target, fromLoc, "重复导航");
       runAfterHooks(target, fromLoc, failure);
       return failure;

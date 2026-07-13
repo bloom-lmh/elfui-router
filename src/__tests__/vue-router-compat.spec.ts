@@ -67,6 +67,25 @@ describe("Vue Router 4 compatible core semantics", () => {
     expect(router.resolve({ name: "user", params: { id: "" } }).path).toBe("/users");
   });
 
+  it("allows force navigation to the current path", async () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/",
+      routes: [{ path: "/", component: "home" }]
+    });
+    const afterEach = vi.fn();
+    router.afterEach(afterEach);
+
+    const result = await router.push({ path: "/", force: true });
+
+    expect(result).toBeUndefined();
+    expect(afterEach).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/" }),
+      expect.objectContaining({ path: "/" }),
+      undefined
+    );
+  });
+
   it("passes saved positions to scrollBehavior on memory history traversal", async () => {
     const left = Object.getOwnPropertyDescriptor(window, "scrollX");
     const top = Object.getOwnPropertyDescriptor(window, "scrollY");
