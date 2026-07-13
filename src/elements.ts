@@ -4,7 +4,7 @@
 //
 // elf-link 作为 elf-router-link 的兼容别名同时注册。
 
-import { effect, stop } from "@elfui/reactivity";
+import { effect, stop, toRaw } from "@elfui/reactivity";
 import { ensureCustomElement } from "@elfui/runtime";
 import { ELF_SCOPED_SLOTS, type ScopedSlotFn } from "@elfui/runtime/internal";
 
@@ -87,6 +87,30 @@ const isElementNode = (node: Node): node is HTMLElement => node instanceof HTMLE
 
 const isObjectLike = (value: unknown): value is Record<string, unknown> =>
   (typeof value === "object" || typeof value === "function") && value !== null;
+
+const sameRouteParams = (a: RouteLocation["params"], b: RouteLocation["params"]): boolean => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  return (
+    aKeys.length === bKeys.length &&
+    aKeys.every((key) => {
+      const left = a[key];
+      const right = b[key];
+      if (Array.isArray(left) || Array.isArray(right)) {
+        return (
+          Array.isArray(left) &&
+          Array.isArray(right) &&
+          left.length === right.length &&
+          left.every((value, index) => value === right[index])
+        );
+      }
+      return left === right;
+    })
+  );
+};
+
+const sameRouteRecord = (a: RouteRecord | null, b: RouteRecord | null): boolean =>
+  a !== null && b !== null && toRaw(a) === toRaw(b);
 
 const isRouteElementConstructor = (value: unknown): value is CustomElementConstructor => {
   if (typeof value !== "function") return false;
@@ -297,9 +321,15 @@ class ElfRouterLinkElement extends RouterHTMLElement {
     const rawHref = target?.fullPath ?? fallbackHref;
     const href = router?.options.mode === "hash" ? `#${rawHref}` : rawHref;
     const current = router?.current.peek() ?? null;
-    const targetPath = target?.path ?? fallbackHref;
-    const isExact = current ? current.path === targetPath : false;
-    const isActive = current ? isExact || current.path.startsWith(`${targetPath}/`) : false;
+    const isExact = Boolean(
+      current &&
+        target?.record &&
+        sameRouteRecord(current.record, target.record) &&
+        sameRouteParams(current.params, target.params)
+    );
+    const isActive = Boolean(
+      current && target?.record && current.matched.some((record) => sameRouteRecord(record, target.record))
+    );
     const activeClass = this.getAttribute("active-class") ?? "active";
     const exactActiveClass = this.getAttribute("exact-active-class") ?? "exact-active";
 
@@ -481,14 +511,15 @@ class ElfRouterViewElement extends RouterHTMLElement {
       return;
     }
 
-    const el = this.createComponentElement(resolvedComponent, loc, props);
+    const el = this.createComponentElement(resolvedComponent, loc, props, record);
     this.appendRenderedNode(el, transitionName, duration);
   }
 
   private createComponentElement(
     resolvedComponent: ResolvedRouteComponent,
     loc: RouteLocation,
-    props: Record<string, unknown> | null
+    props: Record<string, unknown> | null,
+    record: RouteRecord
   ): HTMLElement {
     let el: HTMLElement;
     if (typeof resolvedComponent === "string") {
@@ -500,6 +531,7 @@ class ElfRouterViewElement extends RouterHTMLElement {
         : new (resolvedComponent as new () => HTMLElement)();
     }
     (el as unknown as { route?: RouteLocation }).route = loc;
+    (el as unknown as { __elfRouterRecord?: RouteRecord }).__elfRouterRecord = record;
     if (props) Object.assign(el, props);
     return el;
   }

@@ -10,7 +10,7 @@
 // - 当前激活路由暴露为 router.current（State，可用 useEffect / watch）
 // - 命名路由 / addRoute / removeRoute / scrollBehavior / onError
 
-import { useRef, type Ref } from "@elfui/reactivity";
+import { toRaw, useRef, type Ref } from "@elfui/reactivity";
 
 import { registerRouterElements } from "./elements";
 
@@ -46,7 +46,7 @@ export interface RouteRecord {
   /** 自定义元数据 */
   meta?: RouteMeta;
   /** 重定向：当命中此路径时跳转到目标 */
-  redirect?: string | RouteLocationRaw;
+  redirect?: string | RouteLocationRaw | ((to: RouteLocation) => RouteLocationRaw);
   /** 别名：等价路径，命中时仍解析为本 record */
   alias?: string | string[];
   /** 嵌套子路由 */
@@ -137,13 +137,17 @@ export interface NavigationFailure {
   message?: string;
 }
 
-export const isNavigationFailure = (e: unknown): e is NavigationFailure => {
+export const isNavigationFailure = (
+  e: unknown,
+  type?: NavigationFailureType
+): e is NavigationFailure => {
   return (
     typeof e === "object" &&
     e !== null &&
     "type" in e &&
     typeof (e as { type: unknown }).type === "string" &&
-    (e as { type: string }).type in NavigationFailureType
+    (e as { type: string }).type in NavigationFailureType &&
+    (type === undefined || (e as { type: string }).type === type)
   );
 };
 
@@ -172,6 +176,8 @@ export interface Router {
     scrollBehavior?: ScrollBehaviorFn;
   };
   current: Ref<RouteLocation>;
+  /** Vue Router 4 compatible alias for the reactive current location. */
+  currentRoute: Ref<RouteLocation>;
   push(to: RouteLocationRaw): Promise<void | NavigationFailure>;
   replace(to: RouteLocationRaw): Promise<void | NavigationFailure>;
   back(): void;
@@ -180,7 +186,9 @@ export interface Router {
   resolve(to: RouteLocationRaw): RouteLocation;
   beforeEach(guard: NavigationGuard): () => void;
   beforeResolve(guard: NavigationGuard): () => void;
-  afterEach(cb: (to: RouteLocation, from: RouteLocation) => void): () => void;
+  afterEach(
+    cb: (to: RouteLocation, from: RouteLocation, failure?: NavigationFailure) => void
+  ): () => void;
   onError(cb: (err: unknown) => void): () => void;
   addRoute(route: RouteRecord): () => void;
   addRoute(parentName: string, route: RouteRecord): () => void;
@@ -189,6 +197,38 @@ export interface Router {
   getRoutes(): RouteRecord[];
   isReady(): Promise<void>;
 }
+
+type ComponentGuardKind = "leave" | "update";
+
+interface ComponentGuardEntry {
+  record: RouteRecord;
+  guard: NavigationGuard;
+}
+
+interface ComponentGuardStore {
+  leave: ComponentGuardEntry[];
+  update: ComponentGuardEntry[];
+}
+
+const componentGuardStores = new WeakMap<Router, ComponentGuardStore>();
+const MAX_REDIRECTS = 20;
+
+/** @internal Used by component guard composables; applications should use the composables. */
+export const registerComponentGuard = (
+  router: Router,
+  kind: ComponentGuardKind,
+  record: RouteRecord,
+  guard: NavigationGuard
+): (() => void) => {
+  const store = componentGuardStores.get(router);
+  if (!store) return () => undefined;
+  const entry = { record, guard };
+  store[kind].push(entry);
+  return () => {
+    const index = store[kind].indexOf(entry);
+    if (index >= 0) store[kind].splice(index, 1);
+  };
+};
 
 const EMPTY_LOCATION: RouteLocation = {
   fullPath: "/",
@@ -209,6 +249,11 @@ export const setActiveRouter = (router: Router | null): void => {
 
 export const getActiveRouter = (): Router | null => activeRouter;
 
+const sameRouteRecord = (a: RouteRecord, b: RouteRecord): boolean => toRaw(a) === toRaw(b);
+
+const recordIndex = (records: RouteRecord[], record: RouteRecord): number =>
+  records.findIndex((item) => sameRouteRecord(item, record));
+
 /** 创建路由器 */
 export const createRouter = (opts: RouterOptions): Router => {
   const mode = opts.mode ?? "hash";
@@ -224,10 +269,14 @@ export const createRouter = (opts: RouterOptions): Router => {
   const current = useRef<RouteLocation>({ ...EMPTY_LOCATION });
   const beforeGuards: NavigationGuard[] = [];
   const beforeResolveGuards: NavigationGuard[] = [];
-  const afterHooks: ((to: RouteLocation, from: RouteLocation) => void)[] = [];
+  const afterHooks: ((to: RouteLocation, from: RouteLocation, failure?: NavigationFailure) => void)[] =
+    [];
   const errorHandlers: ((err: unknown) => void)[] = [];
   let memoryPath = options.initialPath;
+  let memoryEntries = [memoryPath];
+  let memoryIndex = 0;
   let isInitialNavigationDone = false;
+  let navigationId = 0;
   const readyPromise: { resolve: () => void; promise: Promise<void> } = (() => {
     let res: () => void = () => {};
     const p = new Promise<void>((r) => {
@@ -263,6 +312,13 @@ export const createRouter = (opts: RouterOptions): Router => {
       if (replace) window.history.replaceState(null, "", path);
       else window.history.pushState(null, "", path);
     } else {
+      if (replace) {
+        memoryEntries[memoryIndex] = path;
+      } else {
+        memoryEntries = memoryEntries.slice(0, memoryIndex + 1);
+        memoryEntries.push(path);
+        memoryIndex++;
+      }
       memoryPath = path;
     }
   };
@@ -295,16 +351,57 @@ export const createRouter = (opts: RouterOptions): Router => {
     return f;
   };
 
+  const runAfterHooks = (
+    to: RouteLocation,
+    from: RouteLocation,
+    failure?: NavigationFailure
+  ): void => {
+    for (const cb of afterHooks) {
+      try {
+        cb(to, from, failure);
+      } catch (err) {
+        if (__DEV__) {
+          console.error(
+            "[elf-router]\n[ELF_ROUTER_AFTER_EACH_ERROR] ERROR router.afterEach\n  afterEach hook 执行失败。\n  hint: 请检查 afterEach 回调内部异常；该错误不会中断已经完成的导航。",
+            err
+          );
+        } else {
+          console.error(err);
+        }
+      }
+    }
+  };
+
   const navigate = async (
     to: RouteLocationRaw,
-    replace: boolean
+    replace: boolean,
+    source: "push" | "pop" = "push",
+    redirectDepth = 0
   ): Promise<void | NavigationFailure> => {
+    const id = ++navigationId;
     const fromLoc = current.peek();
     let target = resolve(to);
 
     // redirect
     if (target.record?.redirect) {
-      target = resolve(target.record.redirect);
+      if (redirectDepth >= MAX_REDIRECTS) {
+        const error = new Error(`Infinite redirect detected while navigating to "${target.fullPath}".`);
+        for (const handler of errorHandlers) {
+          try {
+            handler(error);
+          } catch {
+            // Error handlers are isolated from navigation failures.
+          }
+        }
+        throw error;
+      }
+      const redirect = target.record.redirect;
+      return navigate(
+        typeof redirect === "function" ? redirect(target) : redirect,
+        replace,
+        source,
+        redirectDepth + 1
+      );
     }
 
     // 重复导航
@@ -313,42 +410,76 @@ export const createRouter = (opts: RouterOptions): Router => {
     }
 
     try {
-      // 全局 beforeEach
-      for (const guard of beforeGuards) {
-        const result = await guard(target, fromLoc);
-        if (result === false) {
-          return fail(NavigationFailureType.aborted, target, fromLoc);
-        }
-        if (typeof result === "string" || (result && typeof result === "object")) {
-          return navigate(result as RouteLocationRaw, replace);
-        }
-      }
-      // 路由级 beforeEnter（按 matched 顺序）
-      for (const r of target.matched) {
-        const enters = !r.beforeEnter
-          ? []
-          : Array.isArray(r.beforeEnter)
-            ? r.beforeEnter
-            : [r.beforeEnter];
-        for (const g of enters) {
-          const result = await g(target, fromLoc);
+      const runStage = async (
+        guards: NavigationGuard[]
+      ): Promise<{ handled: boolean; result?: void | NavigationFailure }> => {
+        for (const guard of guards) {
+          const result = await guard(target, fromLoc);
+          if (id !== navigationId) {
+            const failure = fail(NavigationFailureType.cancelled, target, fromLoc);
+            runAfterHooks(target, fromLoc, failure);
+            return { handled: true, result: failure };
+          }
           if (result === false) {
-            return fail(NavigationFailureType.aborted, target, fromLoc);
+            const failure = fail(NavigationFailureType.aborted, target, fromLoc);
+            runAfterHooks(target, fromLoc, failure);
+            return { handled: true, result: failure };
           }
           if (typeof result === "string" || (result && typeof result === "object")) {
-            return navigate(result as RouteLocationRaw, replace);
+            return {
+              handled: true,
+              result: await navigate(result as RouteLocationRaw, replace, source, redirectDepth + 1)
+            };
           }
         }
+        return { handled: false };
+      };
+
+      const componentGuards = componentGuardStores.get(router)!;
+      const leaving = componentGuards.leave
+        .filter(
+          ({ record }) => recordIndex(fromLoc.matched, record) >= 0 && recordIndex(target.matched, record) < 0
+        )
+        .sort((a, b) => recordIndex(fromLoc.matched, b.record) - recordIndex(fromLoc.matched, a.record))
+        .map(({ guard }) => guard);
+      if (leaving.length > 0) {
+        const leaveOutcome = await runStage(leaving);
+        if (leaveOutcome.handled) return leaveOutcome.result;
       }
-      // 全局 beforeResolve
-      for (const guard of beforeResolveGuards) {
-        const result = await guard(target, fromLoc);
-        if (result === false) {
-          return fail(NavigationFailureType.aborted, target, fromLoc);
-        }
-        if (typeof result === "string" || (result && typeof result === "object")) {
-          return navigate(result as RouteLocationRaw, replace);
-        }
+
+      if (beforeGuards.length > 0) {
+        const beforeEachOutcome = await runStage(beforeGuards);
+        if (beforeEachOutcome.handled) return beforeEachOutcome.result;
+      }
+
+      const updating = componentGuards.update
+        .filter(
+          ({ record }) =>
+            target.fullPath !== fromLoc.fullPath &&
+            recordIndex(fromLoc.matched, record) >= 0 &&
+            recordIndex(target.matched, record) >= 0
+        )
+        .sort((a, b) => recordIndex(fromLoc.matched, a.record) - recordIndex(fromLoc.matched, b.record))
+        .map(({ guard }) => guard);
+      if (updating.length > 0) {
+        const updateOutcome = await runStage(updating);
+        if (updateOutcome.handled) return updateOutcome.result;
+      }
+
+      const entering = target.matched
+        .filter((record) => recordIndex(fromLoc.matched, record) < 0)
+        .flatMap((record) => {
+        if (!record.beforeEnter) return [];
+        return Array.isArray(record.beforeEnter) ? record.beforeEnter : [record.beforeEnter];
+        });
+      if (entering.length > 0) {
+        const beforeEnterOutcome = await runStage(entering);
+        if (beforeEnterOutcome.handled) return beforeEnterOutcome.result;
+      }
+
+      if (beforeResolveGuards.length > 0) {
+        const beforeResolveOutcome = await runStage(beforeResolveGuards);
+        if (beforeResolveOutcome.handled) return beforeResolveOutcome.result;
       }
     } catch (err) {
       for (const h of errorHandlers) {
@@ -361,25 +492,16 @@ export const createRouter = (opts: RouterOptions): Router => {
       throw err;
     }
 
-    writeUrl(target.fullPath, replace);
+    if (id !== navigationId) {
+      return fail(NavigationFailureType.cancelled, target, fromLoc);
+    }
+
+    if (source === "push") writeUrl(target.fullPath, replace);
     current.value = target;
     isInitialNavigationDone = true;
     readyPromise.resolve();
 
-    for (const cb of afterHooks) {
-      try {
-        cb(target, fromLoc);
-      } catch (err) {
-        if (__DEV__) {
-          console.error(
-            "[elf-router]\n[ELF_ROUTER_AFTER_EACH_ERROR] ERROR router.afterEach\n  afterEach hook 执行失败。\n  hint: 请检查 afterEach 回调内部异常；该错误不会中断已经完成的导航。",
-            err
-          );
-        } else {
-          console.error(err);
-        }
-      }
-    }
+    runAfterHooks(target, fromLoc);
 
     // scroll
     if (options.scrollBehavior && typeof window !== "undefined") {
@@ -417,23 +539,43 @@ export const createRouter = (opts: RouterOptions): Router => {
   const replace = (to: RouteLocationRaw): Promise<void | NavigationFailure> => navigate(to, true);
 
   const back = (): void => {
-    if (typeof window !== "undefined") window.history.back();
+    if (mode === "memory") {
+      go(-1);
+    } else if (typeof window !== "undefined") window.history.back();
   };
   const forward = (): void => {
-    if (typeof window !== "undefined") window.history.forward();
+    if (mode === "memory") {
+      go(1);
+    } else if (typeof window !== "undefined") window.history.forward();
   };
   const go = (delta: number): void => {
+    if (mode === "memory") {
+      const nextIndex = memoryIndex + Math.trunc(delta);
+      if (nextIndex < 0 || nextIndex >= memoryEntries.length || nextIndex === memoryIndex) return;
+      const previousIndex = memoryIndex;
+      const previousPath = memoryPath;
+      const nextPath = memoryEntries[nextIndex]!;
+      memoryIndex = nextIndex;
+      memoryPath = nextPath;
+      void navigate(nextPath, true, "pop").then((result) => {
+        if (result && memoryIndex === nextIndex) {
+          memoryIndex = previousIndex;
+          memoryPath = previousPath;
+        }
+      });
+      return;
+    }
     if (typeof window !== "undefined") window.history.go(delta);
   };
 
   if (typeof window !== "undefined") {
     if (mode === "hash") {
       window.addEventListener("hashchange", () => {
-        current.value = resolve(readUrl());
+        void navigate(readUrl(), true, "pop");
       });
     } else if (mode === "history") {
       window.addEventListener("popstate", () => {
-        current.value = resolve(readUrl());
+        void navigate(readUrl(), true, "pop");
       });
     }
   }
@@ -441,6 +583,7 @@ export const createRouter = (opts: RouterOptions): Router => {
   const router: Router = {
     options,
     current,
+    currentRoute: current,
     push,
     replace,
     back,
@@ -528,6 +671,8 @@ export const createRouter = (opts: RouterOptions): Router => {
       return readyPromise.promise;
     }
   };
+
+  componentGuardStores.set(router, { leave: [], update: [] });
 
   // 初次解析
   current.value = resolve(readUrl());
@@ -659,7 +804,8 @@ const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
     params: matched.params,
     query,
     hash,
-    meta: leaf?.meta ?? {}
+    // Vue Router style: child meta overrides parent meta while preserving inherited policies.
+    meta: Object.assign({}, ...matched.matched.map((record) => record.meta ?? {}))
   };
   if (leaf?.name !== undefined) loc.name = leaf.name;
   return loc;
@@ -692,39 +838,83 @@ interface MatchResult {
 }
 
 const matchRoute = (path: string, routes: RouteRecord[]): MatchResult => {
-  const tryMatch = (
-    routes: RouteRecord[],
-    parentPath: string,
-    parentChain: RouteRecord[]
-  ): MatchResult | null => {
-    for (const r of routes) {
-      const fullPaths = expandAlias(joinPath(parentPath, r.path), r.alias);
-      const chain = [...parentChain, r];
+  interface Candidate {
+    record: RouteRecord;
+    matched: RouteRecord[];
+    path: string;
+    score: number;
+    order: number;
+  }
 
-      // 子优先
-      if (r.children && r.children.length > 0) {
-        const childMatch = tryMatch(r.children, fullPaths[0]!, chain);
-        if (childMatch) return childMatch;
-      }
-      // 自身（含 alias）
+  const candidates: Candidate[] = [];
+  let order = 0;
+  const collect = (
+    records: RouteRecord[],
+    parentPaths: string[],
+    parentChain: RouteRecord[]
+  ): void => {
+    for (const record of records) {
+      const fullPaths = parentPaths.flatMap((parentPath) =>
+        expandAlias(joinPath(parentPath, record.path), record.alias, parentPath)
+      );
+      const chain = [...parentChain, record];
       for (const fullPath of fullPaths) {
-        const params = matchPath(fullPath, path);
-        if (params) {
-          return { record: r, matched: chain, params };
-        }
+        candidates.push({
+          record,
+          matched: chain,
+          path: fullPath,
+          score: scorePath(fullPath),
+          order: order++
+        });
       }
+      if (record.children?.length) collect(record.children, fullPaths, chain);
     }
-    return null;
   };
-  const result = tryMatch(routes, "", []);
-  if (result) return result;
+
+  collect(routes, [""], []);
+  let best: MatchResult | null = null;
+  let bestScore = -Infinity;
+  let bestDepth = -1;
+  let bestOrder = Infinity;
+  for (const candidate of candidates) {
+    const params = matchPath(candidate.path, path);
+    if (
+      params &&
+      (candidate.score > bestScore ||
+        (candidate.score === bestScore &&
+          (candidate.matched.length > bestDepth ||
+            (candidate.matched.length === bestDepth && candidate.order < bestOrder))))
+    ) {
+      best = { record: candidate.record, matched: candidate.matched, params };
+      bestScore = candidate.score;
+      bestDepth = candidate.matched.length;
+      bestOrder = candidate.order;
+    }
+  }
+  if (best) return best;
   return { record: null, matched: [], params: {} };
 };
 
-const expandAlias = (mainPath: string, alias: string | string[] | undefined): string[] => {
+const expandAlias = (
+  mainPath: string,
+  alias: string | string[] | undefined,
+  parentPath: string
+): string[] => {
   if (!alias) return [mainPath];
   const list = Array.isArray(alias) ? alias : [alias];
-  return [mainPath, ...list];
+  return [mainPath, ...list.map((item) => joinPath(parentPath, item))];
+};
+
+const scorePath = (pattern: string): number => {
+  return pattern
+    .split("/")
+    .filter(Boolean)
+    .reduce((score, segment) => {
+      if (!segment.startsWith(":")) return score + 40;
+      const token = parseParamToken(segment);
+      if (token.repeat) return score;
+      return score + (token.optional ? 10 : 20);
+    }, 0);
 };
 
 const joinPath = (parent: string, child: string): string => {
@@ -752,6 +942,9 @@ const matchPath = (pattern: string, path: string): RouteParams | null => {
     if (token.repeat) {
       const rest = pathParts.slice(pathIndex).map((part) => decodeURIComponent(part));
       if (!token.optional && rest.length === 0) return null;
+      if (token.pattern && !rest.every((part) => new RegExp(`^(?:${token.pattern})$`).test(part))) {
+        return null;
+      }
       params[token.name] = rest;
       pathIndex = pathParts.length;
       continue;
@@ -775,19 +968,24 @@ const matchPath = (pattern: string, path: string): RouteParams | null => {
       continue;
     }
 
-    params[token.name] = decodeURIComponent(ap);
+    const value = decodeURIComponent(ap);
+    if (token.pattern && !new RegExp(`^(?:${token.pattern})$`).test(value)) return null;
+    params[token.name] = value;
     pathIndex++;
   }
   if (pathIndex !== pathParts.length) return null;
   return params;
 };
 
-const parseParamToken = (raw: string): { name: string; optional: boolean; repeat: boolean } => {
+const parseParamToken = (
+  raw: string
+): { name: string; optional: boolean; repeat: boolean; pattern?: string } => {
   const body = raw.slice(1);
   const repeat = body.endsWith("*") || body.endsWith("+");
   const optional = body.endsWith("?") || body.endsWith("*");
   const base = repeat || optional ? body.slice(0, -1) : body;
   const groupIndex = base.indexOf("(");
   const name = groupIndex >= 0 ? base.slice(0, groupIndex) : base;
-  return { name, optional, repeat };
+  const pattern = groupIndex >= 0 && base.endsWith(")") ? base.slice(groupIndex + 1, -1) : undefined;
+  return pattern ? { name, optional, repeat, pattern } : { name, optional, repeat };
 };

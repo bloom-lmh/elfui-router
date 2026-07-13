@@ -1,0 +1,159 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { effect } from "@elfui/reactivity";
+
+import {
+  createRouter,
+  isNavigationFailure,
+  NavigationFailureType,
+  setActiveRouter,
+  useRoute
+} from "../index";
+
+describe("Vue Router 4 compatible core semantics", () => {
+  it("prefers a static route over a dynamic route regardless of declaration order", () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/users/new",
+      routes: [
+        { path: "/users/:id", component: "user" },
+        { path: "/users/new", component: "new-user" }
+      ]
+    });
+
+    expect(router.current.peek().record?.component).toBe("new-user");
+  });
+
+  it("honors custom parameter regular expressions", () => {
+    const routes = [
+      { path: "/orders/:id(\\d+)", component: "order" },
+      { path: "/orders/:slug", component: "order-slug" }
+    ];
+    const numeric = createRouter({ mode: "memory", initialPath: "/orders/42", routes });
+    const text = createRouter({ mode: "memory", initialPath: "/orders/latest", routes });
+
+    expect(numeric.current.peek().record?.component).toBe("order");
+    expect(text.current.peek().record?.component).toBe("order-slug");
+  });
+
+  it("runs beforeEnter only when entering a record", async () => {
+    const beforeEnter = vi.fn();
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/users/1",
+      routes: [{ path: "/users/:id", component: "user", beforeEnter }]
+    });
+
+    await router.push("/users/2");
+
+    expect(beforeEnter).not.toHaveBeenCalled();
+  });
+
+  it("merges parent and child meta with child values taking precedence", () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/admin/users",
+      routes: [
+        {
+          path: "/admin",
+          component: "admin-layout",
+          meta: { requiresAuth: true, section: "admin" },
+          children: [
+            {
+              path: "users",
+              component: "users",
+              meta: { section: "users", title: "Users" }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(router.current.peek().meta).toEqual({
+      requiresAuth: true,
+      section: "users",
+      title: "Users"
+    });
+  });
+
+  it("applies a parent alias to nested child paths", () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/legacy/profile",
+      routes: [
+        {
+          path: "/account",
+          alias: "/legacy",
+          component: "account",
+          children: [{ path: "profile", component: "profile" }]
+        }
+      ]
+    });
+
+    expect(router.current.peek().record?.component).toBe("profile");
+  });
+
+  it("keeps useRoute reactive across replaced locations", async () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/users/1",
+      routes: [{ path: "/users/:id", component: "user" }]
+    });
+    setActiveRouter(router);
+    const route = useRoute();
+    let id = "";
+    const stop = effect(() => {
+      id = String(route.params.id);
+    });
+
+    await router.push("/users/2");
+
+    expect(id).toBe("2");
+    stop.effect.stop();
+  });
+
+  it("maintains a memory history stack for back and forward", async () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/", component: "home" },
+        { path: "/one", component: "one" },
+        { path: "/two", component: "two" }
+      ]
+    });
+    await router.push("/one");
+    await router.push("/two");
+
+    router.back();
+    expect(router.current.peek().path).toBe("/one");
+    router.forward();
+    expect(router.current.peek().path).toBe("/two");
+  });
+
+  it("cancels an older navigation when a newer async navigation wins", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/", component: "home" },
+        { path: "/slow", component: "slow" },
+        { path: "/fast", component: "fast" }
+      ]
+    });
+    router.beforeEach(async (to) => {
+      if (to.path === "/slow") await firstGate;
+    });
+
+    const slow = router.push("/slow");
+    const fast = router.push("/fast");
+    releaseFirst?.();
+    const failure = await slow;
+    await fast;
+
+    expect(isNavigationFailure(failure, NavigationFailureType.cancelled)).toBe(true);
+    expect(router.current.peek().path).toBe("/fast");
+  });
+});

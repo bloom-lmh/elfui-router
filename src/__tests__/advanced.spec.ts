@@ -96,6 +96,21 @@ describe("F3.6 onError", () => {
     await expect(router.push("/x")).rejects.toThrow("boom");
     expect(errorHandler).toHaveBeenCalledTimes(1);
   });
+
+  it("重定向循环会抛错并交给 onError", async () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/a", redirect: "/b" },
+        { path: "/b", redirect: "/a" }
+      ]
+    });
+    const errorHandler = vi.fn();
+    router.onError(errorHandler);
+
+    await expect(router.push("/a")).rejects.toThrow("Infinite redirect");
+    expect(errorHandler).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("F3.1 beforeResolve", () => {
