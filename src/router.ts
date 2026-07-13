@@ -86,8 +86,11 @@ export interface RouteParams {
   [key: string]: string | string[] | undefined;
 }
 
+export type RouteQueryValue = string | null;
+export type RouteQueryValueRaw = string | number | null | undefined;
+
 export interface RouteQuery {
-  [key: string]: string | string[] | undefined;
+  [key: string]: RouteQueryValue | RouteQueryValue[] | undefined;
 }
 
 /** typed routes 扩展点：用户可通过 module augmentation 增加 name -> params 映射。 */
@@ -103,8 +106,8 @@ type NamedRouteParams<Name extends string> = Name extends keyof RouteNamedMap
 type NamedRouteQuery<Name extends string> = Name extends keyof RouteNamedMap
   ? RouteNamedMap[Name] extends { query: infer Query }
     ? Query
-    : Record<string, string | number | (string | number)[]>
-  : Record<string, string | number | (string | number)[]>;
+    : Record<string, RouteQueryValueRaw | RouteQueryValueRaw[]>
+  : Record<string, RouteQueryValueRaw | RouteQueryValueRaw[]>;
 
 export interface RouteLocation {
   /** Browser-facing URL, including the configured history base. */
@@ -137,7 +140,7 @@ export interface RouteLocationNamed<Name extends string = string> {
 }
 export interface RouteLocationPath {
   path: string;
-  query?: Record<string, string | number | (string | number)[]>;
+  query?: Record<string, RouteQueryValueRaw | RouteQueryValueRaw[]>;
   hash?: string;
   replace?: boolean;
 }
@@ -889,9 +892,14 @@ const stringifyQuery = (q: Record<string, unknown> | undefined): string => {
   for (const k of Object.keys(q)) {
     const v = q[k];
     if (Array.isArray(v)) {
-      for (const item of v)
-        parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(item))}`);
-    } else if (v !== undefined && v !== null) {
+      for (const item of v) {
+        if (item === undefined) continue;
+        if (item === null) parts.push(encodeURIComponent(k));
+        else parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(item))}`);
+      }
+    } else if (v === null) {
+      parts.push(encodeURIComponent(k));
+    } else if (v !== undefined) {
       parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
     }
   }
@@ -1022,11 +1030,18 @@ const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
 const parseQuery = (s: string): RouteQuery => {
   const out: RouteQuery = {};
   if (!s) return out;
+  const decode = (value: string): string => {
+    try {
+      return decodeURIComponent(value.replace(/\+/g, " "));
+    } catch {
+      return value;
+    }
+  };
   for (const part of s.split("&")) {
     if (!part) continue;
     const eq = part.indexOf("=");
-    const k = decodeURIComponent(eq < 0 ? part : part.slice(0, eq));
-    const v = decodeURIComponent(eq < 0 ? "" : part.slice(eq + 1));
+    const k = decode(eq < 0 ? part : part.slice(0, eq));
+    const v = eq < 0 ? null : decode(part.slice(eq + 1));
     const existing = out[k];
     if (existing === undefined) {
       out[k] = v;

@@ -46,6 +46,18 @@ describe("Vue Router 4 compatible core semantics", () => {
     expect(router.current.peek().path).toBe("/users/42");
   });
 
+  it("normalizes query values like Vue Router", () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [{ path: "/search", component: "search" }]
+    });
+    const parsed = router.resolve("/search?tag=one+two&flag&tag=three");
+    const stringified = router.resolve({ path: "/search", query: { tag: ["one two", null], flag: null } });
+
+    expect(parsed.query).toEqual({ tag: ["one two", "three"], flag: null });
+    expect(stringified.fullPath).toBe("/search?tag=one%20two&tag&flag");
+  });
+
   it("prefers a static route over a dynamic route regardless of declaration order", () => {
     const router = createRouter({
       mode: "memory",
