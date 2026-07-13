@@ -13,7 +13,8 @@ import {
   type RouteComponent,
   type RouteLocation,
   type RouteLocationRaw,
-  type RouteRecord
+  type RouteRecord,
+  type RouteRecordProps
 } from "./router";
 
 const TAG_ROUTER_LINK = "elf-router-link";
@@ -227,9 +228,22 @@ const resolveRouteViewComponent = (
 
 const resolveRouteProps = (
   record: RouteRecord,
-  route: RouteLocation
+  route: RouteLocation,
+  viewName: string
 ): Record<string, unknown> | null => {
-  const option = record.props;
+  let option = record.props;
+  // Vue Router accepts a props map for named views. Preserve plain static props
+  // unless this record actually declares the requested named view.
+  if (
+    record.components &&
+    option &&
+    typeof option === "object" &&
+    !Array.isArray(option) &&
+    viewName in record.components &&
+    viewName in option
+  ) {
+    option = option[viewName] as RouteRecordProps;
+  }
   if (option === true) return route.params;
   if (typeof option === "function") return option(route);
   if (option && typeof option === "object") return option;
@@ -247,7 +261,7 @@ const resolveRouteProps = (
  */
 class ElfRouterLinkElement extends RouterHTMLElement {
   public static get observedAttributes(): string[] {
-    return ["to", "replace", "active-class", "exact-active-class", "custom"];
+    return ["to", "replace", "active-class", "exact-active-class", "aria-current-value", "custom"];
   }
 
   private __stop: (() => void) | undefined;
@@ -338,6 +352,8 @@ class ElfRouterLinkElement extends RouterHTMLElement {
     this.setAttribute("href", href);
     this.toggleAttribute("active", isActive);
     this.toggleAttribute("exact-active", isExact);
+    if (isExact) this.setAttribute("aria-current", this.getAttribute("aria-current-value") ?? "page");
+    else this.removeAttribute("aria-current");
     this.classList.toggle(activeClass, isActive);
     this.classList.toggle(exactActiveClass, isExact);
 
@@ -360,6 +376,11 @@ class ElfRouterLinkElement extends RouterHTMLElement {
       }
     } else {
       this.ensureAnchor(href);
+      const anchor = this.firstElementChild;
+      if (anchor instanceof HTMLAnchorElement) {
+        if (isExact) anchor.setAttribute("aria-current", this.getAttribute("aria-current-value") ?? "page");
+        else anchor.removeAttribute("aria-current");
+      }
     }
   }
 
@@ -494,7 +515,7 @@ class ElfRouterViewElement extends RouterHTMLElement {
       return;
     }
 
-    const props = resolveRouteProps(record, loc);
+    const props = resolveRouteProps(record, loc, viewName);
     const slot = getScopedSlot<RouterViewSlotScope>(this);
     if (slot) {
       const node = slot({

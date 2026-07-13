@@ -45,6 +45,20 @@ describe("elf-router-link", () => {
     await Promise.resolve();
     expect(link.classList.contains("active")).toBe(true);
     expect(link.classList.contains("exact-active")).toBe(true);
+    expect(link.getAttribute("aria-current")).toBe("page");
+    expect(link.querySelector("a")?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("支持自定义 aria-current-value", async () => {
+    const router = createRouter({ mode: "memory", routes: [{ path: "/", component: tag("aria") }] });
+    setActiveRouter(router);
+    const link = document.createElement("elf-router-link");
+    link.setAttribute("to", "/");
+    link.setAttribute("aria-current-value", "step");
+    document.body.appendChild(link);
+    await Promise.resolve();
+
+    expect(link.getAttribute("aria-current")).toBe("step");
   });
 
   it("自定义 active-class / exact-active-class", async () => {

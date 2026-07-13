@@ -311,6 +311,39 @@ describe("F1.3 elf-link / elf-router-view 元素", () => {
     expect(aside.querySelector("aside")).toBeTruthy();
   });
 
+  it("named views 可分别接收 props", async () => {
+    const mainTag = testTag("named-main-props");
+    const asideTag = testTag("named-aside-props");
+    class MainPage extends HTMLElement {
+      label = "";
+    }
+    class AsidePage extends HTMLElement {
+      label = "";
+    }
+    customElements.define(mainTag, MainPage);
+    customElements.define(asideTag, AsidePage);
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        {
+          path: "/",
+          components: { default: mainTag, aside: asideTag },
+          props: { default: { label: "main" }, aside: { label: "aside" } }
+        }
+      ]
+    });
+    setActiveRouter(router);
+    registerRouterElements();
+    const main = document.createElement("elf-router-view");
+    const aside = document.createElement("elf-router-view");
+    aside.setAttribute("name", "aside");
+    document.body.append(main, aside);
+    await tick();
+
+    expect((main.querySelector(mainTag) as MainPage).label).toBe("main");
+    expect((aside.querySelector(asideTag) as AsidePage).label).toBe("aside");
+  });
+
   it("elf-router-view 支持 route props", async () => {
     const tag = testTag("props");
     class PropPage extends HTMLElement {
