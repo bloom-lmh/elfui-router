@@ -63,6 +63,20 @@ describe("F3.2 路由级 beforeEnter", () => {
 });
 
 describe("F3.5 navigation failure", () => {
+  it("redirected locations expose redirectedFrom", async () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/old", redirect: "/new" },
+        { path: "/new", component: "new" }
+      ]
+    });
+
+    await router.push("/old");
+
+    expect(router.current.peek().redirectedFrom?.path).toBe("/old");
+  });
+
   it("重复导航返回 duplicated failure", async () => {
     const router = createRouter({
       mode: "memory",

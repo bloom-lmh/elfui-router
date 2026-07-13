@@ -128,6 +128,8 @@ export interface RouteLocation {
   hash: string;
   /** route meta（叶子的 meta） */
   meta: RouteMeta;
+  /** Original location when this location was reached through a redirect. */
+  redirectedFrom?: RouteLocation;
 }
 
 /** 命名路由跳转的 location 描述 */
@@ -516,11 +518,13 @@ export const createRouter = (opts: RouterOptions): Router => {
     replace: boolean,
     source: "push" | "pop" = "push",
     redirectDepth = 0,
-    savedPosition: ScrollPosition | null = null
+    savedPosition: ScrollPosition | null = null,
+    redirectedFrom?: RouteLocation
   ): Promise<void | NavigationFailure> => {
     const id = ++navigationId;
     const fromLoc = current.peek();
     let target = resolve(to);
+    if (redirectedFrom) target = { ...target, redirectedFrom };
 
     // redirect
     if (target.record?.redirect) {
@@ -540,7 +544,9 @@ export const createRouter = (opts: RouterOptions): Router => {
         typeof redirect === "function" ? redirect(target) : redirect,
         replace,
         source,
-        redirectDepth + 1
+        redirectDepth + 1,
+        savedPosition,
+        redirectedFrom ?? target
       );
     }
 
@@ -575,7 +581,8 @@ export const createRouter = (opts: RouterOptions): Router => {
                 replace,
                 source,
                 redirectDepth + 1,
-                savedPosition
+                savedPosition,
+                redirectedFrom ?? target
               )
             };
           }
