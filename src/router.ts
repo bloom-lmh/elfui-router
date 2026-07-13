@@ -204,6 +204,10 @@ export interface RouterOptions {
   mode?: RouterMode;
   routes: RouteRecord[];
   initialPath?: string;
+  /** Match static paths case-sensitively. Defaults to Vue Router's case-insensitive behavior. */
+  sensitive?: boolean;
+  /** Preserve a trailing slash as part of the path match. */
+  strict?: boolean;
   scrollBehavior?: ScrollBehaviorFn;
 }
 
@@ -213,6 +217,8 @@ export interface ResolvedRouterOptions {
   base: string;
   routes: RouteRecord[];
   initialPath: string;
+  sensitive: boolean;
+  strict: boolean;
   scrollBehavior: ScrollBehaviorFn | undefined;
 }
 
@@ -336,6 +342,8 @@ export const createRouter = (opts: RouterOptions): Router => {
     base,
     routes: opts.routes,
     initialPath: opts.initialPath ?? "/",
+    sensitive: opts.sensitive ?? false,
+    strict: opts.strict ?? false,
     scrollBehavior: opts.scrollBehavior
   } satisfies ResolvedRouterOptions;
 
@@ -456,11 +464,11 @@ export const createRouter = (opts: RouterOptions): Router => {
       href: createHref(location.fullPath)
     });
     if (typeof to === "string") {
-      return withHref(parseLocation(resolveRelativePath(to, currentLocation), options.routes));
+      return withHref(parseLocation(resolveRelativePath(to, currentLocation), options.routes, options));
     }
     if ("name" in to && to.name) {
       const path = stringifyNamed(to, options.routes);
-      const loc = parseLocation(path, options.routes);
+      const loc = parseLocation(path, options.routes, options);
       return withHref(loc);
     }
     // path-based
@@ -468,7 +476,7 @@ export const createRouter = (opts: RouterOptions): Router => {
     const queryStr = stringifyQuery((to as RouteLocationPath).query);
     if (queryStr) p += `?${queryStr}`;
     if ((to as RouteLocationPath).hash) p += (to as RouteLocationPath).hash;
-    return withHref(parseLocation(resolveRelativePath(p, currentLocation), options.routes));
+    return withHref(parseLocation(resolveRelativePath(p, currentLocation), options.routes, options));
   };
 
   const fail = (
@@ -996,7 +1004,11 @@ const resolveRelativePath = (input: string, current: RouteLocation): string => {
   return `${url.pathname}${url.search}${url.hash}`;
 };
 
-const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
+const parseLocation = (
+  input: string,
+  routes: RouteRecord[],
+  options: Pick<ResolvedRouterOptions, "sensitive" | "strict">
+): RouteLocation => {
   let rest = input;
   let hash = "";
   const hashIdx = rest.indexOf("#");
@@ -1013,7 +1025,7 @@ const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
   const path = rest || "/";
 
   const query = parseQuery(queryStr);
-  const matched = matchRoute(path, routes);
+  const matched = matchRoute(path, routes, options);
   const leaf = matched.record;
   const loc: RouteLocation = {
     href: input || "/",
@@ -1064,7 +1076,11 @@ interface MatchResult {
   params: RouteParams;
 }
 
-const matchRoute = (path: string, routes: RouteRecord[]): MatchResult => {
+const matchRoute = (
+  path: string,
+  routes: RouteRecord[],
+  options: Pick<ResolvedRouterOptions, "sensitive" | "strict">
+): MatchResult => {
   interface Candidate {
     record: RouteRecord;
     matched: RouteRecord[];
@@ -1104,7 +1120,7 @@ const matchRoute = (path: string, routes: RouteRecord[]): MatchResult => {
   let bestDepth = -1;
   let bestOrder = Infinity;
   for (const candidate of candidates) {
-    const params = matchPath(candidate.path, path);
+    const params = matchPath(candidate.path, path, options);
     if (
       params &&
       (candidate.score > bestScore ||
@@ -1150,7 +1166,12 @@ const joinPath = (parent: string, child: string): string => {
   return `${parent.replace(/\/$/, "")}/${child}`;
 };
 
-const matchPath = (pattern: string, path: string): RouteParams | null => {
+const matchPath = (
+  pattern: string,
+  path: string,
+  options: Pick<ResolvedRouterOptions, "sensitive" | "strict">
+): RouteParams | null => {
+  if (options.strict && pattern !== path) return null;
   const patternParts = pattern.split("/").filter(Boolean);
   const pathParts = path.split("/").filter(Boolean);
   const params: RouteParams = {};
@@ -1160,7 +1181,9 @@ const matchPath = (pattern: string, path: string): RouteParams | null => {
     const pp = patternParts[patternIndex]!;
     const ap = pathParts[pathIndex];
     if (!pp.startsWith(":")) {
-      if (pp !== ap) return null;
+      if (ap === undefined || (options.sensitive ? pp !== ap : pp.toLowerCase() !== ap.toLowerCase())) {
+        return null;
+      }
       pathIndex++;
       continue;
     }
@@ -1169,7 +1192,10 @@ const matchPath = (pattern: string, path: string): RouteParams | null => {
     if (token.repeat) {
       const rest = pathParts.slice(pathIndex).map((part) => decodeURIComponent(part));
       if (!token.optional && rest.length === 0) return null;
-      if (token.pattern && !rest.every((part) => new RegExp(`^(?:${token.pattern})$`).test(part))) {
+      if (
+        token.pattern &&
+        !rest.every((part) => new RegExp(`^(?:${token.pattern})$`, options.sensitive ? "" : "i").test(part))
+      ) {
         return null;
       }
       params[token.name] = rest;
@@ -1196,7 +1222,12 @@ const matchPath = (pattern: string, path: string): RouteParams | null => {
     }
 
     const value = decodeURIComponent(ap);
-    if (token.pattern && !new RegExp(`^(?:${token.pattern})$`).test(value)) return null;
+    if (
+      token.pattern &&
+      !new RegExp(`^(?:${token.pattern})$`, options.sensitive ? "" : "i").test(value)
+    ) {
+      return null;
+    }
     params[token.name] = value;
     pathIndex++;
   }

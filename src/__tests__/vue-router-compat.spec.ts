@@ -108,6 +108,30 @@ describe("Vue Router 4 compatible core semantics", () => {
     expect(router.current.peek().record?.component).toBe("new-user");
   });
 
+  it("supports sensitive and strict matcher options", () => {
+    const insensitive = createRouter({
+      mode: "memory",
+      initialPath: "/Users",
+      routes: [{ path: "/users", component: "users" }]
+    });
+    const sensitive = createRouter({
+      mode: "memory",
+      sensitive: true,
+      initialPath: "/Users",
+      routes: [{ path: "/users", component: "users" }]
+    });
+    const strict = createRouter({
+      mode: "memory",
+      strict: true,
+      initialPath: "/users/",
+      routes: [{ path: "/users", component: "users" }]
+    });
+
+    expect(insensitive.current.peek().record?.component).toBe("users");
+    expect(sensitive.current.peek().record).toBeNull();
+    expect(strict.current.peek().record).toBeNull();
+  });
+
   it("honors custom parameter regular expressions", () => {
     const routes = [
       { path: "/orders/:id(\\d+)", component: "order" },
