@@ -67,6 +67,34 @@ describe("Vue Router 4 compatible core semantics", () => {
     expect(router.resolve({ name: "user", params: { id: "" } }).path).toBe("/users");
   });
 
+  it("passes saved positions to scrollBehavior on memory history traversal", async () => {
+    const left = Object.getOwnPropertyDescriptor(window, "scrollX");
+    const top = Object.getOwnPropertyDescriptor(window, "scrollY");
+    Object.defineProperty(window, "scrollX", { configurable: true, value: 12 });
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 34 });
+    const saved: Array<{ left?: number; top?: number } | null> = [];
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/", component: "home" },
+        { path: "/next", component: "next" }
+      ],
+      scrollBehavior(_to, _from, position) {
+        saved.push(position);
+        return null;
+      }
+    });
+
+    await router.push("/next");
+    router.back();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(saved).toEqual([null, { left: 12, top: 34 }]);
+    if (left) Object.defineProperty(window, "scrollX", left);
+    if (top) Object.defineProperty(window, "scrollY", top);
+  });
+
   it("prefers a static route over a dynamic route regardless of declaration order", () => {
     const router = createRouter({
       mode: "memory",
