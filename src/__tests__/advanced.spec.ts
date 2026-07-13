@@ -132,6 +132,30 @@ describe("F3.1 beforeResolve", () => {
     await router.push("/x");
     expect(order).toEqual(["before", "resolve", "after"]);
   });
+
+  it("在 beforeResolve 前加载异步路由组件", async () => {
+    const order: string[] = [];
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        { path: "/", component: "home" },
+        {
+          path: "/lazy",
+          component: () => {
+            order.push("load");
+            return Promise.resolve({ default: "lazy-page" });
+          }
+        }
+      ]
+    });
+    router.beforeResolve(() => {
+      order.push("resolve");
+    });
+
+    await router.push("/lazy");
+
+    expect(order).toEqual(["load", "resolve"]);
+  });
 });
 
 describe("F4.1 命名路由", () => {
@@ -261,6 +285,19 @@ describe("F4.6 addRoute / removeRoute / hasRoute / getRoutes", () => {
     expect(router.hasRoute("X")).toBe(true);
     router.removeRoute("X");
     expect(router.hasRoute("X")).toBe(false);
+  });
+
+  it("同名 addRoute 会替换旧记录，clearRoutes 会清空 matcher", () => {
+    const router = createRouter({
+      mode: "memory",
+      routes: [{ path: "/old", name: "page", component: "old" }]
+    });
+    router.addRoute({ path: "/new", name: "page", component: "new" });
+
+    expect(router.resolve("/old").record).toBeNull();
+    expect(router.resolve("/new").record?.component).toBe("new");
+    router.clearRoutes();
+    expect(router.getRoutes()).toEqual([]);
   });
 
   it("getRoutes 返回所有", () => {

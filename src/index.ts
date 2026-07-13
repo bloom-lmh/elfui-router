@@ -12,13 +12,18 @@
 
 export {
   createRouter,
+  createMemoryHistory,
+  createWebHashHistory,
+  createWebHistory,
   isNavigationFailure,
   setActiveRouter,
   getActiveRouter,
   NavigationFailureType,
   type Router,
   type RouterMode,
+  type RouterHistory,
   type RouterOptions,
+  type ResolvedRouterOptions,
   type RouteRecord,
   type RouteComponent,
   type RouteRecordProps,

@@ -83,6 +83,7 @@ export const useRoute = (): RouteLocation => {
       );
     }
     return {
+      href: "/",
       fullPath: "/",
       path: "/",
       record: null,
@@ -113,7 +114,7 @@ export const useLink = (to: RouteLocationRaw): UseLinkResult => {
   const isActiveState = useRef(false);
   const isExactState = useRef(false);
   const fallbackHref = typeof to === "string" ? to : "path" in to ? to.path : "/";
-  const href = router ? router.resolve(to).fullPath : fallbackHref;
+  const href = router ? router.resolve(to).href : fallbackHref;
 
   if (router) {
     useEffect(() => {
@@ -131,7 +132,7 @@ export const useLink = (to: RouteLocationRaw): UseLinkResult => {
   }
 
   return {
-    href: router?.options.mode === "hash" ? `#${href}` : href,
+    href,
     get isActive(): boolean {
       return isActiveState.value as boolean;
     },

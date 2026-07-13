@@ -4,6 +4,9 @@ import { effect } from "@elfui/reactivity";
 
 import {
   createRouter,
+  createMemoryHistory,
+  createWebHashHistory,
+  createWebHistory,
   isNavigationFailure,
   NavigationFailureType,
   setActiveRouter,
@@ -11,6 +14,38 @@ import {
 } from "../index";
 
 describe("Vue Router 4 compatible core semantics", () => {
+  it("supports Vue Router-style history factories and base-aware hrefs", () => {
+    const routes = [{ path: "/about", component: "about" }];
+    const web = createRouter({ history: createWebHistory("/app/"), routes });
+    const hash = createRouter({ history: createWebHashHistory("/app/"), routes });
+    const memory = createRouter({ history: createMemoryHistory("/app/"), routes });
+
+    expect(web.resolve("/about").href).toBe("/app/about");
+    expect(hash.resolve("/about").href).toBe("/app#/about");
+    expect(memory.resolve("/about").href).toBe("/app/about");
+  });
+
+  it("resolves relative locations and honors push({ replace: true })", async () => {
+    const router = createRouter({
+      mode: "memory",
+      initialPath: "/users/42",
+      routes: [
+        { path: "/", component: "home" },
+        { path: "/users/:id", component: "user" },
+        { path: "/settings", component: "settings" },
+        { path: "/one", component: "one" },
+        { path: "/two", component: "two" }
+      ]
+    });
+
+    expect(router.resolve("../settings").path).toBe("/settings");
+    await router.push("/one");
+    await router.push({ path: "/two", replace: true });
+    router.back();
+
+    expect(router.current.peek().path).toBe("/users/42");
+  });
+
   it("prefers a static route over a dynamic route regardless of declaration order", () => {
     const router = createRouter({
       mode: "memory",

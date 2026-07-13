@@ -318,8 +318,7 @@ class ElfRouterLinkElement extends RouterHTMLElement {
     const to = this.to;
     const target = router ? router.resolve(to) : null;
     const fallbackHref = getFallbackHref(to);
-    const rawHref = target?.fullPath ?? fallbackHref;
-    const href = router?.options.mode === "hash" ? `#${rawHref}` : rawHref;
+    const href = target?.href ?? fallbackHref;
     const current = router?.current.peek() ?? null;
     const isExact = Boolean(
       current &&

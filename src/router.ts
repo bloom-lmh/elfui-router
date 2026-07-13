@@ -16,6 +16,33 @@ import { registerRouterElements } from "./elements";
 
 export type RouterMode = "hash" | "history" | "memory";
 
+/** A lightweight history descriptor compatible with Vue Router's history selection model. */
+export interface RouterHistory {
+  mode: RouterMode;
+  base: string;
+}
+
+const normalizeBase = (base = ""): string => {
+  if (!base || base === "/") return "";
+  const normalized = base.startsWith("/") ? base : `/${base}`;
+  return normalized.replace(/\/$/, "");
+};
+
+export const createWebHistory = (base?: string): RouterHistory => ({
+  mode: "history",
+  base: normalizeBase(base)
+});
+
+export const createWebHashHistory = (base?: string): RouterHistory => ({
+  mode: "hash",
+  base: normalizeBase(base)
+});
+
+export const createMemoryHistory = (base?: string): RouterHistory => ({
+  mode: "memory",
+  base: normalizeBase(base)
+});
+
 /** 路由 meta，用户可通过 module augmentation 扩展 */
 export interface RouteMeta {
   [key: string]: unknown;
@@ -80,6 +107,8 @@ type NamedRouteQuery<Name extends string> = Name extends keyof RouteNamedMap
   : Record<string, string | number | (string | number)[]>;
 
 export interface RouteLocation {
+  /** Browser-facing URL, including the configured history base. */
+  href: string;
   fullPath: string;
   path: string;
   /** 命中的叶子 RouteRecord */
@@ -104,11 +133,13 @@ export interface RouteLocationNamed<Name extends string = string> {
   params?: NamedRouteParams<Name>;
   query?: NamedRouteQuery<Name>;
   hash?: string;
+  replace?: boolean;
 }
 export interface RouteLocationPath {
   path: string;
   query?: Record<string, string | number | (string | number)[]>;
   hash?: string;
+  replace?: boolean;
 }
 
 export type RouteLocationRaw = string | RouteLocationNamed | RouteLocationPath;
@@ -165,25 +196,36 @@ export type ScrollBehaviorFn = (
 ) => ScrollPosition | null | Promise<ScrollPosition | null>;
 
 export interface RouterOptions {
+  /** Vue Router-style history descriptor. Takes precedence over `mode` when provided. */
+  history?: RouterHistory;
   mode?: RouterMode;
   routes: RouteRecord[];
   initialPath?: string;
   scrollBehavior?: ScrollBehaviorFn;
 }
 
+export interface ResolvedRouterOptions {
+  history: RouterHistory | undefined;
+  mode: RouterMode;
+  base: string;
+  routes: RouteRecord[];
+  initialPath: string;
+  scrollBehavior: ScrollBehaviorFn | undefined;
+}
+
 export interface Router {
-  options: Required<Omit<RouterOptions, "scrollBehavior">> & {
-    scrollBehavior?: ScrollBehaviorFn;
-  };
+  options: ResolvedRouterOptions;
   current: Ref<RouteLocation>;
   /** Vue Router 4 compatible alias for the reactive current location. */
   currentRoute: Ref<RouteLocation>;
+  /** Whether browser history events are observed. Useful for micro-frontend hosts. */
+  listening: boolean;
   push(to: RouteLocationRaw): Promise<void | NavigationFailure>;
   replace(to: RouteLocationRaw): Promise<void | NavigationFailure>;
   back(): void;
   forward(): void;
   go(delta: number): void;
-  resolve(to: RouteLocationRaw): RouteLocation;
+  resolve(to: RouteLocationRaw, currentLocation?: RouteLocation): RouteLocation;
   beforeEach(guard: NavigationGuard): () => void;
   beforeResolve(guard: NavigationGuard): () => void;
   afterEach(
@@ -193,6 +235,7 @@ export interface Router {
   addRoute(route: RouteRecord): () => void;
   addRoute(parentName: string, route: RouteRecord): () => void;
   removeRoute(name: string): void;
+  clearRoutes(): void;
   hasRoute(name: string): boolean;
   getRoutes(): RouteRecord[];
   isReady(): Promise<void>;
@@ -212,6 +255,30 @@ interface ComponentGuardStore {
 
 const componentGuardStores = new WeakMap<Router, ComponentGuardStore>();
 const MAX_REDIRECTS = 20;
+const asyncRouteComponentCache = new WeakMap<() => Promise<unknown>, Promise<unknown>>();
+
+const isRouteElementConstructor = (value: unknown): value is CustomElementConstructor => {
+  if (typeof value !== "function") return false;
+  const candidate = value as { __elfDefinition?: unknown; prototype?: unknown };
+  return (
+    candidate.__elfDefinition !== undefined ||
+    (typeof HTMLElement !== "undefined" &&
+      typeof candidate.prototype === "object" &&
+      candidate.prototype instanceof HTMLElement)
+  );
+};
+
+/** @internal Shared by the navigation pipeline and RouterView to deduplicate lazy imports. */
+export const loadAsyncRouteComponent = (loader: () => Promise<unknown>): Promise<unknown> => {
+  const cached = asyncRouteComponentCache.get(loader);
+  if (cached) return cached;
+  const pending = loader().catch((error: unknown) => {
+    asyncRouteComponentCache.delete(loader);
+    throw error;
+  });
+  asyncRouteComponentCache.set(loader, pending);
+  return pending;
+};
 
 /** @internal Used by component guard composables; applications should use the composables. */
 export const registerComponentGuard = (
@@ -231,6 +298,7 @@ export const registerComponentGuard = (
 };
 
 const EMPTY_LOCATION: RouteLocation = {
+  href: "/",
   fullPath: "/",
   path: "/",
   record: null,
@@ -256,15 +324,17 @@ const recordIndex = (records: RouteRecord[], record: RouteRecord): number =>
 
 /** 创建路由器 */
 export const createRouter = (opts: RouterOptions): Router => {
-  const mode = opts.mode ?? "hash";
+  const history = opts.history;
+  const mode = history?.mode ?? opts.mode ?? "hash";
+  const base = history?.base ?? "";
   const options = {
+    history,
     mode,
+    base,
     routes: opts.routes,
     initialPath: opts.initialPath ?? "/",
     scrollBehavior: opts.scrollBehavior
-  } as Required<Omit<RouterOptions, "scrollBehavior">> & {
-    scrollBehavior?: ScrollBehaviorFn;
-  };
+  } satisfies ResolvedRouterOptions;
 
   const current = useRef<RouteLocation>({ ...EMPTY_LOCATION });
   const beforeGuards: NavigationGuard[] = [];
@@ -275,6 +345,9 @@ export const createRouter = (opts: RouterOptions): Router => {
   let memoryPath = options.initialPath;
   let memoryEntries = [memoryPath];
   let memoryIndex = 0;
+  const memoryScrollPositions = new Map<number, ScrollPosition>();
+  let browserHistoryPosition = 0;
+  let ignoreNextBrowserPop = false;
   let isInitialNavigationDone = false;
   let navigationId = 0;
   const readyPromise: { resolve: () => void; promise: Promise<void> } = (() => {
@@ -291,27 +364,78 @@ export const createRouter = (opts: RouterOptions): Router => {
       return hash.startsWith("#") ? hash.slice(1) : hash;
     }
     if (mode === "history") {
-      return typeof window !== "undefined"
-        ? window.location.pathname + window.location.search + window.location.hash
-        : "/";
+      if (typeof window === "undefined") return "/";
+      const pathname = window.location.pathname.startsWith(base)
+        ? window.location.pathname.slice(base.length) || "/"
+        : window.location.pathname;
+      return pathname + window.location.search + window.location.hash;
     }
     return memoryPath;
+  };
+
+  const createHref = (path: string): string =>
+    mode === "hash" ? `${base}#${path}` : `${base}${path}` || "/";
+
+  const captureScrollPosition = (): ScrollPosition | null => {
+    if (typeof window === "undefined") return null;
+    return { left: window.scrollX, top: window.scrollY };
+  };
+
+  const readSavedPosition = (state: unknown): ScrollPosition | null => {
+    if (!state || typeof state !== "object" || !("__elfRouterScroll" in state)) return null;
+    const position = (state as { __elfRouterScroll?: unknown }).__elfRouterScroll;
+    if (!position || typeof position !== "object") return null;
+    const { left, top } = position as { left?: unknown; top?: unknown };
+    return typeof left === "number" || typeof top === "number"
+      ? { ...(typeof left === "number" ? { left } : {}), ...(typeof top === "number" ? { top } : {}) }
+      : null;
+  };
+
+  const readBrowserPosition = (state: unknown): number | null => {
+    if (!state || typeof state !== "object") return null;
+    const position = (state as { __elfRouterPosition?: unknown }).__elfRouterPosition;
+    return typeof position === "number" ? position : null;
+  };
+
+  const saveBrowserScrollPosition = (): void => {
+    if (typeof window === "undefined") return;
+    const state = window.history.state;
+    const preserved = state && typeof state === "object" ? state : {};
+    window.history.replaceState(
+      { ...preserved, __elfRouterScroll: captureScrollPosition() },
+      "",
+      window.location.href
+    );
   };
 
   const writeUrl = (path: string, replace: boolean): void => {
     if (mode === "hash") {
       if (typeof window === "undefined") return;
+      const url = createHref(path);
       if (replace) {
-        const url = window.location.href.replace(/#.*$/, "") + `#${path}`;
-        window.history.replaceState(null, "", url);
+        const state = window.history.state;
+        const preserved = state && typeof state === "object" ? state : {};
+        window.history.replaceState({ ...preserved, __elfRouterPosition: browserHistoryPosition }, "", url);
       } else {
-        window.location.hash = path;
+        saveBrowserScrollPosition();
+        browserHistoryPosition++;
+        window.history.pushState({ __elfRouterPosition: browserHistoryPosition }, "", url);
       }
     } else if (mode === "history") {
       if (typeof window === "undefined") return;
-      if (replace) window.history.replaceState(null, "", path);
-      else window.history.pushState(null, "", path);
+      const url = createHref(path);
+      if (replace) {
+        const state = window.history.state;
+        const preserved = state && typeof state === "object" ? state : {};
+        window.history.replaceState({ ...preserved, __elfRouterPosition: browserHistoryPosition }, "", url);
+      } else {
+        saveBrowserScrollPosition();
+        browserHistoryPosition++;
+        window.history.pushState({ __elfRouterPosition: browserHistoryPosition }, "", url);
+      }
     } else {
+      const position = captureScrollPosition();
+      if (position) memoryScrollPositions.set(memoryIndex, position);
       if (replace) {
         memoryEntries[memoryIndex] = path;
       } else {
@@ -323,21 +447,25 @@ export const createRouter = (opts: RouterOptions): Router => {
     }
   };
 
-  const resolve = (to: RouteLocationRaw): RouteLocation => {
+  const resolve = (to: RouteLocationRaw, currentLocation = current.peek()): RouteLocation => {
+    const withHref = (location: RouteLocation): RouteLocation => ({
+      ...location,
+      href: createHref(location.fullPath)
+    });
     if (typeof to === "string") {
-      return parseLocation(to, options.routes);
+      return withHref(parseLocation(resolveRelativePath(to, currentLocation), options.routes));
     }
     if ("name" in to && to.name) {
       const path = stringifyNamed(to, options.routes);
       const loc = parseLocation(path, options.routes);
-      return loc;
+      return withHref(loc);
     }
     // path-based
     let p = (to as RouteLocationPath).path ?? "/";
     const queryStr = stringifyQuery((to as RouteLocationPath).query);
     if (queryStr) p += `?${queryStr}`;
     if ((to as RouteLocationPath).hash) p += (to as RouteLocationPath).hash;
-    return parseLocation(p, options.routes);
+    return withHref(parseLocation(resolveRelativePath(p, currentLocation), options.routes));
   };
 
   const fail = (
@@ -376,7 +504,8 @@ export const createRouter = (opts: RouterOptions): Router => {
     to: RouteLocationRaw,
     replace: boolean,
     source: "push" | "pop" = "push",
-    redirectDepth = 0
+    redirectDepth = 0,
+    savedPosition: ScrollPosition | null = null
   ): Promise<void | NavigationFailure> => {
     const id = ++navigationId;
     const fromLoc = current.peek();
@@ -428,7 +557,13 @@ export const createRouter = (opts: RouterOptions): Router => {
           if (typeof result === "string" || (result && typeof result === "object")) {
             return {
               handled: true,
-              result: await navigate(result as RouteLocationRaw, replace, source, redirectDepth + 1)
+              result: await navigate(
+                result as RouteLocationRaw,
+                replace,
+                source,
+                redirectDepth + 1,
+                savedPosition
+              )
             };
           }
         }
@@ -477,6 +612,22 @@ export const createRouter = (opts: RouterOptions): Router => {
         if (beforeEnterOutcome.handled) return beforeEnterOutcome.result;
       }
 
+      const asyncLoaders = target.matched.flatMap((record) => {
+        const components = [record.component, ...Object.values(record.components ?? {})];
+        return components.filter(
+          (component): component is () => Promise<unknown> =>
+            typeof component === "function" && !isRouteElementConstructor(component)
+        );
+      });
+      if (asyncLoaders.length > 0) {
+        await Promise.all(asyncLoaders.map((loader) => loadAsyncRouteComponent(loader)));
+        if (id !== navigationId) {
+          const failure = fail(NavigationFailureType.cancelled, target, fromLoc);
+          runAfterHooks(target, fromLoc, failure);
+          return failure;
+        }
+      }
+
       if (beforeResolveGuards.length > 0) {
         const beforeResolveOutcome = await runStage(beforeResolveGuards);
         if (beforeResolveOutcome.handled) return beforeResolveOutcome.result;
@@ -506,7 +657,7 @@ export const createRouter = (opts: RouterOptions): Router => {
     // scroll
     if (options.scrollBehavior && typeof window !== "undefined") {
       try {
-        const pos = await options.scrollBehavior(target, fromLoc, null);
+        const pos = await options.scrollBehavior(target, fromLoc, savedPosition);
         if (pos) {
           if (pos.el) {
             const el = typeof pos.el === "string" ? document.querySelector(pos.el) : pos.el;
@@ -535,7 +686,8 @@ export const createRouter = (opts: RouterOptions): Router => {
     return undefined;
   };
 
-  const push = (to: RouteLocationRaw): Promise<void | NavigationFailure> => navigate(to, false);
+  const push = (to: RouteLocationRaw): Promise<void | NavigationFailure> =>
+    navigate(to, typeof to === "object" && to !== null && to.replace === true);
   const replace = (to: RouteLocationRaw): Promise<void | NavigationFailure> => navigate(to, true);
 
   const back = (): void => {
@@ -555,9 +707,17 @@ export const createRouter = (opts: RouterOptions): Router => {
       const previousIndex = memoryIndex;
       const previousPath = memoryPath;
       const nextPath = memoryEntries[nextIndex]!;
+      const currentPosition = captureScrollPosition();
+      if (currentPosition) memoryScrollPositions.set(memoryIndex, currentPosition);
       memoryIndex = nextIndex;
       memoryPath = nextPath;
-      void navigate(nextPath, true, "pop").then((result) => {
+      void navigate(
+        nextPath,
+        true,
+        "pop",
+        0,
+        memoryScrollPositions.get(nextIndex) ?? null
+      ).then((result) => {
         if (result && memoryIndex === nextIndex) {
           memoryIndex = previousIndex;
           memoryPath = previousPath;
@@ -569,13 +729,43 @@ export const createRouter = (opts: RouterOptions): Router => {
   };
 
   if (typeof window !== "undefined") {
+    if (mode !== "memory") {
+      const state = window.history.state;
+      browserHistoryPosition = readBrowserPosition(state) ?? 0;
+      const preserved = state && typeof state === "object" ? state : {};
+      window.history.replaceState(
+        { ...preserved, __elfRouterPosition: browserHistoryPosition },
+        "",
+        window.location.href
+      );
+    }
+    const handleBrowserPop = (state: unknown): void => {
+      if (!router.listening) return;
+      if (ignoreNextBrowserPop) {
+        ignoreNextBrowserPop = false;
+        return;
+      }
+      const targetPosition = readBrowserPosition(state);
+      const delta = targetPosition === null ? 0 : targetPosition - browserHistoryPosition;
+      void navigate(readUrl(), true, "pop", 0, readSavedPosition(state)).then((result) => {
+        if (result && result.type !== NavigationFailureType.duplicated && delta !== 0) {
+          ignoreNextBrowserPop = true;
+          window.history.go(-delta);
+          return;
+        }
+        if (!result && targetPosition !== null) browserHistoryPosition = targetPosition;
+      });
+    };
     if (mode === "hash") {
       window.addEventListener("hashchange", () => {
-        void navigate(readUrl(), true, "pop");
+        handleBrowserPop(window.history.state);
+      });
+      window.addEventListener("popstate", (event) => {
+        handleBrowserPop(event.state);
       });
     } else if (mode === "history") {
-      window.addEventListener("popstate", () => {
-        void navigate(readUrl(), true, "pop");
+      window.addEventListener("popstate", (event) => {
+        handleBrowserPop(event.state);
       });
     }
   }
@@ -584,6 +774,7 @@ export const createRouter = (opts: RouterOptions): Router => {
     options,
     current,
     currentRoute: current,
+    listening: true,
     push,
     replace,
     back,
@@ -627,6 +818,7 @@ export const createRouter = (opts: RouterOptions): Router => {
       } else {
         route = args[0] as RouteRecord;
       }
+      if (route.name) removeRouteByName(options.routes, route.name);
       if (parentName) {
         const parent = findRouteByName(options.routes, parentName);
         if (!parent) {
@@ -652,6 +844,9 @@ export const createRouter = (opts: RouterOptions): Router => {
     },
     removeRoute(name) {
       removeRouteByName(options.routes, name);
+    },
+    clearRoutes() {
+      options.routes.splice(0, options.routes.length);
     },
     hasRoute(name) {
       return findRouteByName(options.routes, name) !== null;
@@ -777,6 +972,18 @@ const removeRouteByName = (routes: RouteRecord[], name: string): boolean => {
   return false;
 };
 
+const resolveRelativePath = (input: string, current: RouteLocation): string => {
+  if (input.startsWith("/")) return input;
+  if (input.startsWith("?")) return `${current.path}${input}`;
+  if (input.startsWith("#")) return `${current.path}${stringifyQuery(current.query) ? `?${stringifyQuery(current.query)}` : ""}${input}`;
+
+  const currentPath = current.path.endsWith("/")
+    ? current.path
+    : current.path.replace(/\/[^/]*$/, "/");
+  const url = new URL(input || ".", `http://elfui.local${currentPath}`);
+  return `${url.pathname}${url.search}${url.hash}`;
+};
+
 const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
   let rest = input;
   let hash = "";
@@ -797,6 +1004,7 @@ const parseLocation = (input: string, routes: RouteRecord[]): RouteLocation => {
   const matched = matchRoute(path, routes);
   const leaf = matched.record;
   const loc: RouteLocation = {
+    href: input || "/",
     fullPath: input || "/",
     path,
     record: leaf,
