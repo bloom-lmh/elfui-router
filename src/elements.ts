@@ -343,8 +343,9 @@ class ElfRouterLinkElement extends RouterHTMLElement {
     const isActive = Boolean(
       current && target?.record && current.matched.some((record) => sameRouteRecord(record, target.record))
     );
-    const activeClass = this.getAttribute("active-class") ?? "active";
-    const exactActiveClass = this.getAttribute("exact-active-class") ?? "exact-active";
+    const activeClass = this.getAttribute("active-class") ?? router?.options.linkActiveClass ?? "active";
+    const exactActiveClass =
+      this.getAttribute("exact-active-class") ?? router?.options.linkExactActiveClass ?? "exact-active";
 
     this.href = href;
     this.isActive = isActive;

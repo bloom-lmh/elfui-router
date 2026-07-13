@@ -219,6 +219,10 @@ export interface RouterOptions {
   sensitive?: boolean;
   /** Preserve a trailing slash as part of the path match. */
   strict?: boolean;
+  /** Default class applied by RouterLink to a matching route. */
+  linkActiveClass?: string;
+  /** Default class applied by RouterLink to an exact route match. */
+  linkExactActiveClass?: string;
   scrollBehavior?: ScrollBehaviorFn;
 }
 
@@ -230,6 +234,8 @@ export interface ResolvedRouterOptions {
   initialPath: string;
   sensitive: boolean;
   strict: boolean;
+  linkActiveClass: string;
+  linkExactActiveClass: string;
   scrollBehavior: ScrollBehaviorFn | undefined;
 }
 
@@ -355,6 +361,8 @@ export const createRouter = (opts: RouterOptions): Router => {
     initialPath: opts.initialPath ?? "/",
     sensitive: opts.sensitive ?? false,
     strict: opts.strict ?? false,
+    linkActiveClass: opts.linkActiveClass ?? "active",
+    linkExactActiveClass: opts.linkExactActiveClass ?? "exact-active",
     scrollBehavior: opts.scrollBehavior
   } satisfies ResolvedRouterOptions;
 
@@ -932,7 +940,7 @@ export const createRouter = (opts: RouterOptions): Router => {
 
 // ---------- helpers ----------
 
-const stringifyQuery = (q: Record<string, unknown> | undefined): string => {
+export const stringifyQuery = (q: Record<string, unknown> | undefined): string => {
   if (!q) return "";
   const parts: string[] = [];
   for (const k of Object.keys(q)) {
@@ -1079,7 +1087,7 @@ const parseLocation = (
   return loc;
 };
 
-const parseQuery = (s: string): RouteQuery => {
+export const parseQuery = (s: string): RouteQuery => {
   const out: RouteQuery = {};
   if (!s) return out;
   const decode = (value: string): string => {

@@ -15,6 +15,8 @@ export {
   createMemoryHistory,
   createWebHashHistory,
   createWebHistory,
+  parseQuery,
+  stringifyQuery,
   isNavigationFailure,
   setActiveRouter,
   getActiveRouter,
@@ -50,6 +52,7 @@ export {
   useRouter,
   useRoute,
   useLink,
+  type UseLinkOptions,
   type UseLinkResult
 } from "./composable";
 

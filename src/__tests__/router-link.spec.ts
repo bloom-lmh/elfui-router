@@ -82,6 +82,23 @@ describe("elf-router-link", () => {
     expect(link.classList.contains("active")).toBe(false);
   });
 
+  it("使用 router 全局 active class 默认值", async () => {
+    const router = createRouter({
+      mode: "memory",
+      linkActiveClass: "router-active",
+      linkExactActiveClass: "router-exact",
+      routes: [{ path: "/", component: tag("global-class") }]
+    });
+    setActiveRouter(router);
+    const link = document.createElement("elf-router-link");
+    link.setAttribute("to", "/");
+    document.body.appendChild(link);
+    await Promise.resolve();
+
+    expect(link.classList.contains("router-active")).toBe(true);
+    expect(link.classList.contains("router-exact")).toBe(true);
+  });
+
   it("replace 属性走 router.replace 不入历史栈", async () => {
     const homeTag = tag("home");
     const aboutTag = tag("about");

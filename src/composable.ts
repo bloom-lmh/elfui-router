@@ -108,8 +108,18 @@ export interface UseLinkResult {
   navigate: () => Promise<void>;
 }
 
+export interface UseLinkOptions {
+  to: RouteLocationRaw;
+  replace?: boolean;
+}
+
 /** 给自定义 link 组件的 headless API */
-export const useLink = (to: RouteLocationRaw): UseLinkResult => {
+export const useLink = (input: RouteLocationRaw | UseLinkOptions): UseLinkResult => {
+  const options =
+    typeof input === "object" && input !== null && "to" in input
+      ? (input as UseLinkOptions)
+      : { to: input as RouteLocationRaw };
+  const { to } = options;
   const router = getActiveRouter();
   const isActiveState = useRef(false);
   const isExactState = useRef(false);
@@ -141,7 +151,8 @@ export const useLink = (to: RouteLocationRaw): UseLinkResult => {
     },
     navigate: async () => {
       if (!router) return;
-      await router.push(to);
+      if (options.replace) await router.replace(to);
+      else await router.push(to);
     }
   };
 };

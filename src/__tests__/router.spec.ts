@@ -243,6 +243,13 @@ describe("F5 Composable useLink", () => {
     expect(link.href).toBe("/users/7");
     setActiveRouter(router);
   });
+
+  it("useLink 支持 { to, replace } 选项形式", async () => {
+    const link = useLink({ to: "/about", replace: true });
+    await link.navigate();
+
+    expect(router.current.peek().path).toBe("/about");
+  });
 });
 
 describe("F1.3 elf-link / elf-router-view 元素", () => {
