@@ -88,6 +88,7 @@ export interface RouteParams {
 
 export type RouteQueryValue = string | null;
 export type RouteQueryValueRaw = string | number | null | undefined;
+export type RouteHistoryState = Record<string, unknown>;
 
 export interface RouteQuery {
   [key: string]: RouteQueryValue | RouteQueryValue[] | undefined;
@@ -139,6 +140,8 @@ export interface RouteLocationNamed<Name extends string = string> {
   query?: NamedRouteQuery<Name>;
   hash?: string;
   replace?: boolean;
+  /** Arbitrary state persisted in the browser history entry. */
+  state?: RouteHistoryState;
   /** Re-run a navigation even when its fullPath is the current location. */
   force?: boolean;
 }
@@ -147,6 +150,8 @@ export interface RouteLocationPath {
   query?: Record<string, RouteQueryValueRaw | RouteQueryValueRaw[]>;
   hash?: string;
   replace?: boolean;
+  /** Arbitrary state persisted in the browser history entry. */
+  state?: RouteHistoryState;
   /** Re-run a navigation even when its fullPath is the current location. */
   force?: boolean;
 }
@@ -425,18 +430,26 @@ export const createRouter = (opts: RouterOptions): Router => {
     );
   };
 
-  const writeUrl = (path: string, replace: boolean): void => {
+  const writeUrl = (path: string, replace: boolean, navigationState?: RouteHistoryState): void => {
     if (mode === "hash") {
       if (typeof window === "undefined") return;
       const url = createHref(path);
       if (replace) {
         const state = window.history.state;
         const preserved = state && typeof state === "object" ? state : {};
-        window.history.replaceState({ ...preserved, __elfRouterPosition: browserHistoryPosition }, "", url);
+        window.history.replaceState(
+          { ...(navigationState ?? preserved), __elfRouterPosition: browserHistoryPosition },
+          "",
+          url
+        );
       } else {
         saveBrowserScrollPosition();
         browserHistoryPosition++;
-        window.history.pushState({ __elfRouterPosition: browserHistoryPosition }, "", url);
+        window.history.pushState(
+          { ...(navigationState ?? {}), __elfRouterPosition: browserHistoryPosition },
+          "",
+          url
+        );
       }
     } else if (mode === "history") {
       if (typeof window === "undefined") return;
@@ -444,11 +457,19 @@ export const createRouter = (opts: RouterOptions): Router => {
       if (replace) {
         const state = window.history.state;
         const preserved = state && typeof state === "object" ? state : {};
-        window.history.replaceState({ ...preserved, __elfRouterPosition: browserHistoryPosition }, "", url);
+        window.history.replaceState(
+          { ...(navigationState ?? preserved), __elfRouterPosition: browserHistoryPosition },
+          "",
+          url
+        );
       } else {
         saveBrowserScrollPosition();
         browserHistoryPosition++;
-        window.history.pushState({ __elfRouterPosition: browserHistoryPosition }, "", url);
+        window.history.pushState(
+          { ...(navigationState ?? {}), __elfRouterPosition: browserHistoryPosition },
+          "",
+          url
+        );
       }
     } else {
       const position = captureScrollPosition();
@@ -672,7 +693,8 @@ export const createRouter = (opts: RouterOptions): Router => {
       return fail(NavigationFailureType.cancelled, target, fromLoc);
     }
 
-    if (source === "push") writeUrl(target.fullPath, replace);
+    const navigationState = typeof to === "object" && to !== null ? to.state : undefined;
+    if (source === "push") writeUrl(target.fullPath, replace, navigationState);
     current.value = target;
     isInitialNavigationDone = true;
     readyPromise.resolve();

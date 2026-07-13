@@ -29,6 +29,7 @@ export {
   type RouteRecordProps,
   type RouteParams,
   type RouteQuery,
+  type RouteHistoryState,
   type RouteLocation,
   type RouteLocationRaw,
   type RouteLocationNamed,

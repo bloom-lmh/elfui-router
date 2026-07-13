@@ -37,4 +37,22 @@ describe("browser history navigation", () => {
     expect(router.current.peek().path).toBe("/blocked");
     expect(go).toHaveBeenCalledWith(1);
   });
+
+  it("persists navigation state for push and replace", async () => {
+    window.history.replaceState(null, "", "/");
+    const router = createRouter({
+      mode: "history",
+      routes: [
+        { path: "/", component: "home" },
+        { path: "/details", component: "details" },
+        { path: "/activity", component: "activity" }
+      ]
+    });
+
+    await router.push({ path: "/details", state: { panel: "info" } });
+    expect(window.history.state).toMatchObject({ panel: "info" });
+
+    await router.replace({ path: "/activity", state: { panel: "activity" } });
+    expect(window.history.state).toMatchObject({ panel: "activity" });
+  });
 });
