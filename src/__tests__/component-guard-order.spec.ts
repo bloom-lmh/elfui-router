@@ -69,6 +69,7 @@ describe("component guard ordering", () => {
     childView.setAttribute("depth", "1");
     document.body.append(parentView, childView);
     await tick();
+    order.length = 0;
 
     await router.push("/next");
 
@@ -102,6 +103,7 @@ describe("component guard ordering", () => {
     registerRouterElements();
     document.body.appendChild(document.createElement("elf-router-view"));
     await tick();
+    order.length = 0;
 
     await router.push("/users/2");
 

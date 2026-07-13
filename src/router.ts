@@ -379,6 +379,7 @@ export const createRouter = (opts: RouterOptions): Router => {
   let browserHistoryPosition = 0;
   let ignoreNextBrowserPop = false;
   let isInitialNavigationDone = false;
+  let hasNavigationStarted = false;
   let navigationId = 0;
   const readyPromise: { resolve: () => void; promise: Promise<void> } = (() => {
     let res: () => void = () => {};
@@ -551,11 +552,12 @@ export const createRouter = (opts: RouterOptions): Router => {
   const navigate = async (
     to: RouteLocationRaw,
     replace: boolean,
-    source: "push" | "pop" = "push",
+    source: "push" | "pop" | "initial" = "push",
     redirectDepth = 0,
     savedPosition: ScrollPosition | null = null,
     redirectedFrom?: RouteLocation
   ): Promise<void | NavigationFailure> => {
+    if (source !== "initial") hasNavigationStarted = true;
     const id = ++navigationId;
     const fromLoc = current.peek();
     let target = resolve(to);
@@ -587,7 +589,7 @@ export const createRouter = (opts: RouterOptions): Router => {
 
     // 重复导航
     const force = typeof to === "object" && to !== null && to.force === true;
-    if (!force && isInitialNavigationDone && target.fullPath === fromLoc.fullPath) {
+    if (source !== "initial" && !force && isInitialNavigationDone && target.fullPath === fromLoc.fullPath) {
       const failure = fail(NavigationFailureType.duplicated, target, fromLoc, "重复导航");
       runAfterHooks(target, fromLoc, failure);
       return failure;
@@ -929,11 +931,17 @@ export const createRouter = (opts: RouterOptions): Router => {
   // 初次解析
   current.value = resolve(readUrl());
   isInitialNavigationDone = true;
-  readyPromise.resolve();
 
   // 自动激活：让 useRouter / getActiveRouter / <elf-router-view> / <elf-link> 立即可用
   setActiveRouter(router);
   registerRouterElements();
+
+  queueMicrotask(() => {
+    if (hasNavigationStarted) return;
+    void navigate(readUrl(), true, "initial")
+      .catch(() => undefined)
+      .finally(() => readyPromise.resolve());
+  });
 
   return router;
 };

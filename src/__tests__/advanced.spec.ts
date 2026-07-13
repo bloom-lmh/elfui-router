@@ -356,4 +356,40 @@ describe("F4.6 addRoute / removeRoute / hasRoute / getRoutes", () => {
     });
     await router.isReady();
   });
+
+  it("isReady waits for initial guards and lazy components", async () => {
+    let release: (() => void) | undefined;
+    const loading = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const order: string[] = [];
+    const router = createRouter({
+      mode: "memory",
+      routes: [
+        {
+          path: "/",
+          component: async () => {
+            order.push("load");
+            await loading;
+            return { default: "page" };
+          }
+        }
+      ]
+    });
+    router.beforeResolve(() => {
+      order.push("resolve");
+    });
+    let ready = false;
+    void router.isReady().then(() => {
+      ready = true;
+    });
+
+    await Promise.resolve();
+    expect(ready).toBe(false);
+    release?.();
+    await router.isReady();
+
+    expect(order).toEqual(["load", "resolve"]);
+    expect(ready).toBe(true);
+  });
 });
