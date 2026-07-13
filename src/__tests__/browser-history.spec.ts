@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createRouter } from "../index";
+import { createRouter, createWebHistory } from "../index";
 
 const tick = async (): Promise<void> => {
   await Promise.resolve();
@@ -54,5 +54,21 @@ describe("browser history navigation", () => {
 
     await router.replace({ path: "/activity", state: { panel: "activity" } });
     expect(window.history.state).toMatchObject({ panel: "activity" });
+  });
+
+  it("reads the current location relative to a history base boundary", () => {
+    window.history.replaceState(null, "", "/app/users");
+    const scoped = createRouter({
+      history: createWebHistory("/app"),
+      routes: [{ path: "/users", component: "users" }]
+    });
+    window.history.replaceState(null, "", "/application/users");
+    const unscoped = createRouter({
+      history: createWebHistory("/app"),
+      routes: [{ path: "/application/users", component: "application-users" }]
+    });
+
+    expect(scoped.current.peek().path).toBe("/users");
+    expect(unscoped.current.peek().path).toBe("/application/users");
   });
 });

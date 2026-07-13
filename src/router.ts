@@ -387,7 +387,9 @@ export const createRouter = (opts: RouterOptions): Router => {
     }
     if (mode === "history") {
       if (typeof window === "undefined") return "/";
-      const pathname = window.location.pathname.startsWith(base)
+      const isWithinBase = base !== "" &&
+        (window.location.pathname === base || window.location.pathname.startsWith(`${base}/`));
+      const pathname = isWithinBase
         ? window.location.pathname.slice(base.length) || "/"
         : window.location.pathname;
       return pathname + window.location.search + window.location.hash;
