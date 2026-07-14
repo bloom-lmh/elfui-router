@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@elfui/reactivity':
-        specifier: 0.1.0-beta.1
-        version: 0.1.0-beta.1
+        specifier: 0.1.0-beta.3
+        version: 0.1.0-beta.3
       '@elfui/runtime':
-        specifier: 0.1.0-beta.1
-        version: 0.1.0-beta.1
+        specifier: 0.1.0-beta.3
+        version: 0.1.0-beta.3
       '@elfui/shared':
-        specifier: 0.1.0-beta.1
-        version: 0.1.0-beta.1
+        specifier: 0.1.0-beta.3
+        version: 0.1.0-beta.3
     devDependencies:
       '@changesets/cli':
         specifier: ^2.31.0
@@ -150,14 +150,14 @@ packages:
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
 
-  '@elfui/reactivity@0.1.0-beta.1':
-    resolution: {integrity: sha512-LDgRsJuanQhH+USgI3WMe10Ai3rhgaTamuUjNao5IflO//mVGNFdYsXxkSX6TBIr1fD9y7hTR057Id5mQHMfJQ==}
+  '@elfui/reactivity@0.1.0-beta.3':
+    resolution: {integrity: sha512-cRy19wqlg6t7ZKWgnnjdQmU1hqEcZd/7EU2S6K2hXT5umwjpHYkSeo2bKjbW9DqYyKglmQfKooLNQWaUTFTHGQ==}
 
-  '@elfui/runtime@0.1.0-beta.1':
-    resolution: {integrity: sha512-zhDTZsipi8yky/4BhpNb+MwT5112gfutwEAohNLUja1V9rmhybWq3BU8ADRXlrPjyt3QC5kssJXUiIo6DP/LtA==}
+  '@elfui/runtime@0.1.0-beta.3':
+    resolution: {integrity: sha512-IX+TBXF+V65j3QqM4O4TCX9h31Z4xGsHigfdNb9U9WpZCiw00PXBc5f0Dw4F1Z5lCllyXDlZcZj/X+X5wXes2A==}
 
-  '@elfui/shared@0.1.0-beta.1':
-    resolution: {integrity: sha512-9YVt2qVWf/T/uyqdraMwjuPU+OausipuL7qt6t9vdEloeoLCyqJzHmCu/px11OXM2NQRytr1VsP7zj2brTnvyQ==}
+  '@elfui/shared@0.1.0-beta.3':
+    resolution: {integrity: sha512-FhZSs8Nt9kr53EO4OLfXhKr36BPNY2DeIWlzGRQVrFn3P6RrNDUXCaTmha/hGlQX4wVkgfXsjjjdFVR7e3fSWg==}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -1201,16 +1201,16 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
-  '@elfui/reactivity@0.1.0-beta.1':
+  '@elfui/reactivity@0.1.0-beta.3':
     dependencies:
-      '@elfui/shared': 0.1.0-beta.1
+      '@elfui/shared': 0.1.0-beta.3
 
-  '@elfui/runtime@0.1.0-beta.1':
+  '@elfui/runtime@0.1.0-beta.3':
     dependencies:
-      '@elfui/reactivity': 0.1.0-beta.1
-      '@elfui/shared': 0.1.0-beta.1
+      '@elfui/reactivity': 0.1.0-beta.3
+      '@elfui/shared': 0.1.0-beta.3
 
-  '@elfui/shared@0.1.0-beta.1': {}
+  '@elfui/shared@0.1.0-beta.3': {}
 
   '@emnapi/core@1.11.1':
     dependencies:

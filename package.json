@@ -1,7 +1,15 @@
 {
   "name": "@elfui/router",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "Official router for ElfUI applications.",
+  "keywords": [
+    "elfui",
+    "router",
+    "web-components",
+    "typescript",
+    "spa",
+    "routing"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bloom-lmh/elfui-router.git"
@@ -39,9 +47,9 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@elfui/reactivity": "0.1.0-beta.1",
-    "@elfui/runtime": "0.1.0-beta.1",
-    "@elfui/shared": "0.1.0-beta.1"
+    "@elfui/reactivity": "0.1.0-beta.3",
+    "@elfui/runtime": "0.1.0-beta.3",
+    "@elfui/shared": "0.1.0-beta.3"
   },
   "license": "MIT",
   "devDependencies": {
