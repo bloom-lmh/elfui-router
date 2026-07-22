@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { defineCustomElement } from "@elfui/runtime";
+import { defineCustomElement } from "@elfui/core";
 import { createRouter, registerRouterElements, setActiveRouter } from "../index";
 
 afterEach(() => {

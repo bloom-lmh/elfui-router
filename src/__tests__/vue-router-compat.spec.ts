@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { effect } from "@elfui/reactivity";
+import { useEffect } from "@elfui/core";
 
 import {
   createRouter,
@@ -229,7 +229,7 @@ describe("Vue Router 4 compatible core semantics", () => {
     setActiveRouter(router);
     const route = useRoute();
     let id = "";
-    const stop = effect(() => {
+    const stop = useEffect(() => {
       id = String(route.params.id);
     });
 

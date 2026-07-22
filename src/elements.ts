@@ -4,10 +4,10 @@
 //
 // elf-link 作为 elf-router-link 的兼容别名同时注册。
 
-import { effect, stop, toRaw } from "@elfui/reactivity";
-import { ensureCustomElement } from "@elfui/runtime";
-import { ELF_SCOPED_SLOTS, type ScopedSlotFn } from "@elfui/runtime/internal";
+import { ensureCustomElement, toRaw, useEffect } from "@elfui/core";
+import { ELF_SCOPED_SLOTS, type ScopedSlotFn } from "@elfui/core/internal";
 
+import { DEV } from "./dev";
 import {
   getActiveRouter,
   type RouteComponent,
@@ -195,7 +195,7 @@ const reportAsyncRouteComponentError = (
   routePath: string,
   result: AsyncRouteComponentResolveResult
 ): void => {
-  if (!__DEV__) {
+  if (!DEV) {
     console.error(result.reason ?? 0);
     return;
   }
@@ -295,12 +295,11 @@ class ElfRouterLinkElement extends RouterHTMLElement {
 
     const router = getActiveRouter();
     if (router) {
-      const runner = effect(() => {
+      this.__stop = useEffect(() => {
         // 触发依赖追踪
         void router.current.value.path;
         this.refresh();
       });
-      this.__stop = () => stop(runner);
     }
   }
 
@@ -435,18 +434,17 @@ class ElfRouterViewElement extends RouterHTMLElement {
   public connectedCallback(): void {
     const router = getActiveRouter();
     if (!router) {
-      if (__DEV__) {
+      if (DEV) {
         console.warn(
           "[elf-router]\n[ELF_ROUTER_NO_ACTIVE_ROUTER] WARNING <elf-router-view>\n  没有激活的 router。\n  hint: 请先调用 createRouter(...)，或显式 setActiveRouter(router)。"
         );
       }
       return;
     }
-    const runner = effect(() => {
+    this.__stop = useEffect(() => {
       const loc = router.current.value;
       this.scheduleRender(loc);
     });
-    this.__stop = () => stop(runner);
   }
 
   public disconnectedCallback(): void {
@@ -494,7 +492,7 @@ class ElfRouterViewElement extends RouterHTMLElement {
           return;
         }
       } catch (err) {
-        if (__DEV__) {
+        if (DEV) {
           console.error(
             `[elf-router]\n[ELF_ROUTER_ASYNC_COMPONENT_LOAD] ERROR <elf-router-view>\n  异步组件加载失败（route: "${record.path}"）。\n  hint: 请检查动态 import 路径、导出组件名以及构建工具的 chunk 加载错误。`,
             err
@@ -505,7 +503,7 @@ class ElfRouterViewElement extends RouterHTMLElement {
         return;
       }
     } else {
-      if (__DEV__) {
+      if (DEV) {
         console.error(
           `[elf-router]\n[ELF_ROUTER_INVALID_COMPONENT] ERROR <elf-router-view>\n  无效的 route.component（route: "${record.path}"）。\n  hint: route.component 必须是 tag 字符串、CustomElement 构造器，或返回这些值/模块的异步函数。`,
           c

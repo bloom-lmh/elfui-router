@@ -2,9 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useRef, type Ref } from "@elfui/reactivity";
-import { defineCustomElement, type RenderContext } from "@elfui/runtime";
-import { setScopedSlot, text } from "@elfui/runtime/internal";
+import { defineCustomElement, useRef, type Ref, type RenderContext } from "@elfui/core";
+import { setScopedSlot, text } from "@elfui/core/internal";
 
 import {
   createRouter,

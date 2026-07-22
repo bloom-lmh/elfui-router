@@ -7,20 +7,13 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@elfui/reactivity':
-        specifier: 0.1.0-beta.3
-        version: 0.1.0-beta.3
-      '@elfui/runtime':
-        specifier: 0.1.0-beta.3
-        version: 0.1.0-beta.3
-      '@elfui/shared':
-        specifier: 0.1.0-beta.3
-        version: 0.1.0-beta.3
     devDependencies:
       '@changesets/cli':
         specifier: ^2.31.0
         version: 2.31.0(@types/node@25.8.0)
+      '@elfui/core':
+        specifier: 0.1.0-beta.9
+        version: 0.1.0-beta.9
       '@types/node':
         specifier: 25.8.0
         version: 25.8.0
@@ -150,14 +143,17 @@ packages:
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
 
-  '@elfui/reactivity@0.1.0-beta.3':
-    resolution: {integrity: sha512-cRy19wqlg6t7ZKWgnnjdQmU1hqEcZd/7EU2S6K2hXT5umwjpHYkSeo2bKjbW9DqYyKglmQfKooLNQWaUTFTHGQ==}
+  '@elfui/core@0.1.0-beta.9':
+    resolution: {integrity: sha512-odvZh57B2te7hIRtmACvkUteEzmeIRyF664idWVZoQ8WWymGfioUeRbdr3i58l5nHVcVN/niTndLgUfS/H/e8w==}
 
-  '@elfui/runtime@0.1.0-beta.3':
-    resolution: {integrity: sha512-IX+TBXF+V65j3QqM4O4TCX9h31Z4xGsHigfdNb9U9WpZCiw00PXBc5f0Dw4F1Z5lCllyXDlZcZj/X+X5wXes2A==}
+  '@elfui/reactivity@0.1.0-beta.9':
+    resolution: {integrity: sha512-M5JANRCnxo93oiqhVJO+STwykB8zVecBwv/27LnIW9QYbxkaC1fCKiOPmI0KbcEymvHYbprYXEAi2HlZOUNH+g==}
 
-  '@elfui/shared@0.1.0-beta.3':
-    resolution: {integrity: sha512-FhZSs8Nt9kr53EO4OLfXhKr36BPNY2DeIWlzGRQVrFn3P6RrNDUXCaTmha/hGlQX4wVkgfXsjjjdFVR7e3fSWg==}
+  '@elfui/runtime@0.1.0-beta.9':
+    resolution: {integrity: sha512-OwXGuWZEhzGMGAn14ntmyO2gyPiditMMDeldVCluVrWUAfW527TlgWJIPy+yayGD7I9Nd12WW6pfoJqCR+Qinw==}
+
+  '@elfui/shared@0.1.0-beta.9':
+    resolution: {integrity: sha512-k2Xr9cu6yQYOUCP8/KCsiwyWNscIXGtZxsBP96Waltmq+w57/9aVo1+LTvM1zudZ6IFVVGFMwZlbJrLrab2ZJA==}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -1201,16 +1197,22 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
-  '@elfui/reactivity@0.1.0-beta.3':
+  '@elfui/core@0.1.0-beta.9':
     dependencies:
-      '@elfui/shared': 0.1.0-beta.3
+      '@elfui/reactivity': 0.1.0-beta.9
+      '@elfui/runtime': 0.1.0-beta.9
+      '@elfui/shared': 0.1.0-beta.9
 
-  '@elfui/runtime@0.1.0-beta.3':
+  '@elfui/reactivity@0.1.0-beta.9':
     dependencies:
-      '@elfui/reactivity': 0.1.0-beta.3
-      '@elfui/shared': 0.1.0-beta.3
+      '@elfui/shared': 0.1.0-beta.9
 
-  '@elfui/shared@0.1.0-beta.3': {}
+  '@elfui/runtime@0.1.0-beta.9':
+    dependencies:
+      '@elfui/reactivity': 0.1.0-beta.9
+      '@elfui/shared': 0.1.0-beta.9
+
+  '@elfui/shared@0.1.0-beta.9': {}
 
   '@emnapi/core@1.11.1':
     dependencies:

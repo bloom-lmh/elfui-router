@@ -3,7 +3,7 @@
 Official router for ElfUI applications.
 
 ```bash
-pnpm add @elfui/router
+pnpm add @elfui/core @elfui/router
 ```
 
 ```ts

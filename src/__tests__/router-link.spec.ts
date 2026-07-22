@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { setScopedSlot } from "@elfui/runtime/internal";
+import { setScopedSlot } from "@elfui/core/internal";
 
 import {
   createRouter,

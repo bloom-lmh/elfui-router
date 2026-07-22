@@ -1,7 +1,8 @@
 ﻿// 路由 composables — useRouter / useRoute / useLink
 
-import { toRaw, useEffect, useRef } from "@elfui/reactivity";
-import { onUnmount, useHost } from "@elfui/runtime";
+import { onUnmounted, toRaw, useEffect, useHost, useRef } from "@elfui/core";
+
+import { DEV } from "./dev";
 
 import {
   getActiveRouter,
@@ -60,7 +61,7 @@ const getRouteFacade = (router: Router): RouteLocation => {
       return descriptor ? { ...descriptor, configurable: true } : undefined;
     },
     set() {
-      if (__DEV__) {
+      if (DEV) {
         console.warn("[elf-router] Route locations are readonly.");
       }
       return false;
@@ -77,7 +78,7 @@ export const useRouter = (): Router | null => getActiveRouter();
 export const useRoute = (): RouteLocation => {
   const r = getActiveRouter();
   if (!r) {
-    if (__DEV__) {
+    if (DEV) {
       console.warn(
         "[elf-router]\n[ELF_ROUTER_NO_ACTIVE_ROUTER] WARNING useRoute\n  没有激活的 router。\n  hint: 请先调用 createRouter(...)，或显式 setActiveRouter(router)。"
       );
@@ -163,7 +164,7 @@ export const onBeforeRouteLeave = (guard: NavigationGuard): (() => void) => {
   const record = host.__elfRouterRecord ?? router?.current.peek().record;
   if (!router || !record) return () => undefined;
   const dispose = registerComponentGuard(router, "leave", record, guard);
-  onUnmount(dispose);
+  onUnmounted(dispose);
   return dispose;
 };
 
@@ -173,6 +174,6 @@ export const onBeforeRouteUpdate = (guard: NavigationGuard): (() => void) => {
   const record = host.__elfRouterRecord ?? router?.current.peek().record;
   if (!router || !record) return () => undefined;
   const dispose = registerComponentGuard(router, "update", record, guard);
-  onUnmount(dispose);
+  onUnmounted(dispose);
   return dispose;
 };

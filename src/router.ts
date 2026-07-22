@@ -10,7 +10,9 @@
 // - 当前激活路由暴露为 router.current（State，可用 useEffect / watch）
 // - 命名路由 / addRoute / removeRoute / scrollBehavior / onError
 
-import { toRaw, useRef, type Ref } from "@elfui/reactivity";
+import { toRaw, useRef, type Ref } from "@elfui/core";
+
+import { DEV } from "./dev";
 
 import { registerRouterElements } from "./elements";
 
@@ -537,7 +539,7 @@ export const createRouter = (opts: RouterOptions): Router => {
       try {
         cb(to, from, failure);
       } catch (err) {
-        if (__DEV__) {
+        if (DEV) {
           console.error(
             "[elf-router]\n[ELF_ROUTER_AFTER_EACH_ERROR] ERROR router.afterEach\n  afterEach hook 执行失败。\n  hint: 请检查 afterEach 回调内部异常；该错误不会中断已经完成的导航。",
             err
@@ -732,7 +734,7 @@ export const createRouter = (opts: RouterOptions): Router => {
           }
         }
       } catch (err) {
-        if (__DEV__) {
+        if (DEV) {
           console.error(
             "[elf-router]\n[ELF_ROUTER_SCROLL_BEHAVIOR_ERROR] ERROR router.scrollBehavior\n  scrollBehavior 执行失败。\n  hint: 请检查 scrollBehavior 返回值，或目标 el 是否存在。",
             err
@@ -881,7 +883,7 @@ export const createRouter = (opts: RouterOptions): Router => {
       if (parentName) {
         const parent = findRouteByName(options.routes, parentName);
         if (!parent) {
-          if (__DEV__) {
+          if (DEV) {
             console.warn(
               `[elf-router]\n[ELF_ROUTER_ADD_ROUTE_PARENT_MISSING] WARNING router.addRoute\n  未找到父路由 "${parentName}"。\n  hint: 请确认父路由 name 已注册，或改用 addRoute(route) 添加顶层路由。`
             );
@@ -971,7 +973,7 @@ export const stringifyQuery = (q: Record<string, unknown> | undefined): string =
 const stringifyNamed = (loc: RouteLocationNamed, routes: RouteRecord[]): string => {
   const route = findRouteByName(routes, loc.name);
   if (!route) {
-    if (__DEV__) {
+    if (DEV) {
       console.warn(
         `[elf-router]\n[ELF_ROUTER_NAMED_ROUTE_MISSING] WARNING router.resolve\n  未找到名为 "${loc.name}" 的路由。\n  hint: 请检查 routes 中的 name，或改用 path 导航。`
       );

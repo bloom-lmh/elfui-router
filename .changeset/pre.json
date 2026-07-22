@@ -4,5 +4,8 @@
   "initialVersions": {
     "@elfui/router": "0.1.0-beta.2"
   },
-  "changesets": []
+  "changesets": [
+    "align-core-runtime",
+    "release-process"
+  ]
 }

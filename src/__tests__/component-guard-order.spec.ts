@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { defineCustomElement } from "@elfui/runtime";
+import { defineCustomElement } from "@elfui/core";
 
 import {
   createRouter,
